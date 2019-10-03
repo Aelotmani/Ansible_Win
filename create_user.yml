@@ -15,4 +15,4 @@
           fullname: Ansible 
           password_never_expires: "yes"
           account_locked: "no"
-          user_cannot_change_password: "yes"
+          user_cannot_change_password: "no"
