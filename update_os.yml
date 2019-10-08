@@ -1,0 +1,12 @@
+---
+- name: Update
+  hosts: windows
+  tasks:
+    - name: update windows
+      win_updates:
+      register: update_result
+    - debug: var=update_result
+
+    - name : reboot if required
+      win_reboot:
+      when: update_result.reboot_required

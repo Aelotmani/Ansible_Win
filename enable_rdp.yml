@@ -1,0 +1,48 @@
+---
+- name: Install common windows tools 
+  hosts: windows
+  gather_facts: no
+  become: yes
+  become_user: Administrateur
+  tasks:
+    - name: Check that xRemoteDesktopAdmin Powershell module is available
+      win_psmodule:
+        name: xRemoteDesktopAdmin
+        state: present
+    
+    - name: Enable Remote desktop
+      win_dsc:
+        resource_name: xRemoteDesktopAdmin
+        Ensure: present
+        UserAuthentication: Secure
+
+    - name: Make sure Windows Management Framework and PowerShell is latest version
+      win_chocolatey:
+        name: powershell
+        state: latest
+      register: check_powershell5
+      become: yes
+      become_method: runas
+
+    - name: Reboot to complete Powershell 5.0 install
+      win_reboot:
+        reboot_timeout: 3600
+        post_reboot_delay: 60
+      when: check_powershell5.changed
+
+    - name: Check that the xNetworking Powershell module is available
+      win_psmodule:
+        name: xNetworking
+        state: present
+
+    - name: Allow RDP through Firewall
+      win_dsc:
+        resource_name: xFirewall
+        Name: "Administrator access for RDP (TCP-In)"
+        Ensure: present
+        Enabled: True
+        Profile: "Domain"
+        Direction: "Inbound"
+        Localport: "3389"
+        Protocol: "TCP"
+        Description: "Opens the listener port for RDP"

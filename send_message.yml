@@ -1,0 +1,10 @@
+---
+- name: Send a message to Windows OS
+  hosts: windows
+  gather_facts: no
+  tasks:
+    - name: Send a message
+      win_msg:
+        msg: Merci d'utiliser firefox pour accéder à l'intranet (Test message Ansible) 
+        display_seconds: 15
+        wait: no

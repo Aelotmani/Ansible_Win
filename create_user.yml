@@ -1,7 +1,11 @@
 ---
 - name: Add a user
   hosts: windows
-  gather_facts: false
+  gather_facts: no
+  become: yes
+  become_user: Administrateur
+  vars:
+    state: present
   tasks:
     - name: Add windows user
       win_user:
@@ -10,9 +14,11 @@
           password: "Passw0rd"
           description: user Add with Ansible
           password_expired: "no"
-          state: present
+          state: "{{ state }}"
           account_disabled: "no"
           fullname: Ansible 
           password_never_expires: "yes"
           account_locked: "no"
           user_cannot_change_password: "no"
+          groups_action: add
+          groups: Utilisateurs

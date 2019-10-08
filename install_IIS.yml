@@ -1,0 +1,47 @@
+---
+- name: Install IIS & configure tow web site in different ports
+  hosts: windows
+  gather_facts: no
+  become: yes
+  become_user: Administrateur
+  vars:
+    ansible_site_path: "C:\\inetpub\\wwwroot\\ansibletest"
+    default_iis_path: "C:\\inetpub\\wwwroot\\index.html"
+    src_file: "/home"
+  tasks:
+    - name: Install IIS Feature on windows VM
+      win_feature:
+        name: web-Server
+        state: present
+    
+    - name: Copy file "index.html" from Ansible to iis Server
+      win_copy:
+          src: "{{ src_file }}/index.html"
+          dest: "{{ default_iis_path }}"
+    
+    - name: Create a directory for a seconde web site
+      win_file:
+          path: "{{ ansible_site_path }}"
+          state: directory
+
+    - name: create a seconde web site
+      win_iis_website:
+          name: Ansible test site"
+          physical_path: "{{ ansible_site_path }}" 
+          state: started
+          port: 8080
+    
+    - name: Create fichier index du second site web
+      win_copy:
+        src: "{{ src_file}}/ansible.html"
+        dest: "{{ ansible_site_path }}\\index.html"
+
+    - name: Open FW port for the seconde web site
+      win_firewall_rule:
+          direction: in
+          name: Ansibel8080_website
+          action: allow
+          protocol: Tcp
+          description: "test creating seconde site with Ansible"
+          enabled: yes
+          state: present
