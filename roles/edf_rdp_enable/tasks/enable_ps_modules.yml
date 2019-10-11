@@ -4,4 +4,4 @@
     name: "{{item}}"
     state: present
   with_items:
-    - "{{ sft_rdp_mudoles }}"
+    - "{{ sft_rdp_modules }}"
