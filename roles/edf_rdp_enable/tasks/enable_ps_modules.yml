@@ -1,0 +1,7 @@
+---
+- name: Check that xRemoteDesktopAdmin & xNetworking Powershell modules are available
+  win_psmodule:
+    name: "{{item}}"
+    state: present
+  with_items:
+    - "{{ sft_rdp_mudoles }}"

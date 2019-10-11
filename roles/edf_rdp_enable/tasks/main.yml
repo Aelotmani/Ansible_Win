@@ -1,0 +1,6 @@
+---
+# tasks file for sft_rdp_enable
+- include: enable_ps_modules.yml
+- include: install_psversion.yml
+- include: enable_rdp.yml
+- include: allow_fw_port.yml

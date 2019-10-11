@@ -1,0 +1,15 @@
+---
+- name: Make sure Windows Management Framework and PowerShell are on the latest version
+  win_chocolatey:
+    name: powershell
+    state: latest
+  register: check_powershell5
+  become: yes
+  become_user: Administrateur
+  become_method: runas
+
+- name: Reboot to complete Powershell 5.0 install
+  win_reboot:
+    reboot_timeout: 3600
+    post_reboot_delay: 60
+  when: check_powershell5.changed

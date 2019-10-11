@@ -1,0 +1,3 @@
+---
+# defaults file for sft_rdp_enable
+sft_rdp_mudoles: [xRemoteDesktopAdmin, xNetworking]

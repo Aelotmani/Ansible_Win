@@ -1,0 +1,6 @@
+---
+- name: Enable Remote desktop
+  win_dsc:
+    resource_name: xRemoteDesktopAdmin
+    Ensure: present
+    UserAuthentication: Secure

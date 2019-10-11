@@ -1,0 +1,5 @@
+---
+- hosts: windows
+  remote_user: Administrateur
+  roles:
+    - sft_rdp_enable

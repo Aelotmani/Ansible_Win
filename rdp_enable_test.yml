@@ -1,0 +1,6 @@
+---
+- hosts: windows
+  remote_user: Administrateur
+  tasks:
+  - include_role:
+      name: edf_rdp_enable

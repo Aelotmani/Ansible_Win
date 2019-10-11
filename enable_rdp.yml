@@ -1,14 +1,17 @@
 ---
-- name: Install common windows tools 
+- name: Enable RDP on windows server
   hosts: windows
   gather_facts: no
   become: yes
   become_user: Administrateur
   tasks:
-    - name: Check that xRemoteDesktopAdmin Powershell module is available
+    - name: Check that xRemoteDesktopAdmin & xNetworking Powershell modules are available
       win_psmodule:
-        name: xRemoteDesktopAdmin
+        name: "{{item}}"
         state: present
+      with_items:
+        - xRemoteDesktopAdmin
+        - xNetworking
     
     - name: Enable Remote desktop
       win_dsc:
@@ -29,11 +32,6 @@
         reboot_timeout: 3600
         post_reboot_delay: 60
       when: check_powershell5.changed
-
-    - name: Check that the xNetworking Powershell module is available
-      win_psmodule:
-        name: xNetworking
-        state: present
 
     - name: Allow RDP through Firewall
       win_dsc:
