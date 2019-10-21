@@ -1,0 +1,56 @@
+---
+- name: Install openjdk on windows servers
+  hosts: windows
+  gather_facts: no
+  become: yes
+  become_user: Administrateur
+  vars:
+    openjdk_dir_src: "/home/abdelkrim"
+    openjdk_dir_tmp: "C:\\temp\\openjdk_tmp\\"
+    openjdk_major_Version: "11"
+    openjdk_app_dir: "C:\\Program Files\\java\\"
+
+  tasks:
+    - name: Create a temporary directory for openjdk
+      win_file:
+        path: "{{ openjdk_dir_tmp }}"
+        state: directory
+
+    - name: Copy file openjdk{{ openjdk_major_Version }} from source server to target server (Temporaire will be replaced by Nexus)
+      win_copy:
+        src: "{{ openjdk_dir_src }}/java-11-openjdk-11.0.4.11-1.windows.redhat.x86_64.zip"
+        dest: "{{ openjdk_dir_tmp }}"
+      register: check_copy_openjdk_file
+
+    - name: Extract opnejdk from temp directory to app directory
+      win_unzip:
+        dest: "{{ openjdk_app_dir }}"
+        src: "{{ openjdk_dir_tmp }}\\java-11-openjdk-11.0.4.11-1.windows.redhat.x86_64.zip"
+      when: check_copy_openjdk_file.changed
+
+    - name: Rename openjdk file
+      win_shell: |
+        $fileName= (Get-ChildItem -Path "{{ openjdk_app_dir }}").Name
+        if($fileName -match '^(java-)(.+[a-z]-)(.*[1-9].+)$'){
+          $newFileName= $fileName -replace '^(java-)(.+[a-z]-)(.*[1-9])(-\d\..*)$','$1$3'
+          Rename-Item "{{ openjdk_app_dir }}$fileName" $newFileName
+          write-host $newFileName
+        } 
+      register: rename_result_out
+      changed_when: rename_result_out.stdout|length != 0
+    
+    - name: Ensure that "{{ openjdk_app_dir }}{{rename_result_out.stdout_lines[0]}}" JAVA_HOME is on the machine
+      win_path:
+        elements: "{{ openjdk_app_dir }}{{rename_result_out.stdout_lines[0]}}"
+        scope: machine
+        state: present
+        name: JAVA_HOME
+      when: rename_result_out.changed
+
+    - name: Ensure that jdk{{openjdk_major_Version}} are present on the global system path
+      win_path:
+        elements:
+        - '%JAVA_HOME%\bin'
+        scope: machine
+        state: present
+      when: rename_result_out.changed

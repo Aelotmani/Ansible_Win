@@ -1,0 +1,15 @@
+---
+# defaults file for sft_sonar_bin
+#global vars
+sft_sonar_temp_download_path: "C:\\ansible_temps\\"
+
+#Sonarqube vars
+sft_sonar_install_dir: "c:\\"
+sft_sonar_sonar_version: "7.9.1"
+sft_sonar_user: "sonar"
+sft_sonar_password: "Passw0rd"
+
+#jdk vars
+sft_sonar_jdk_temp_dir: "C:\\Program Files\\java\\"
+sft_sonar_jdk_major_Version: "11"
+  #sft_sonar_jdk_dir: "{{sft_sonar_jdk_temp_install_dir}}//java-{{sft_sonar_jdk_major_Version}}"

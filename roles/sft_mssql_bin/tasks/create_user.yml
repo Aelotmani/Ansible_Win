@@ -1,0 +1,36 @@
+---
+- name: Ajouter un compte pour la gestion de SQL Service
+  win_user:
+      name: "{{sft_mysql_sqlsvc_account}}"
+      update_password: always
+      password: "{{ sft_mysql_sqlsvc_pass }}"
+      description: Account for SQL Service
+      password_expired: "no"
+      state: present
+      account_disabled: "no"
+      fullname: SQLSvc 
+      password_never_expires: "yes"
+      account_locked: "no"
+      user_cannot_change_password: "no"
+      groups_action: add
+      groups: 
+        - Utilisateurs
+  tags: service_account
+
+- name: Ajouter un compte pour la gestion de SQL Service
+  win_user:
+      name: "{{sft_mysql_agentsvc_account}}"
+      update_password: always
+      password: "{{ sft_mysql_agentsvc_pass}}"
+      description: "SQL Agent Service account for {{ inventory_hostname }}\\{{ sft_mysql_instance_name }}"
+      password_expired: "no"
+      state: present
+      account_disabled: "no"
+      fullname: AgentSvc 
+      password_never_expires: "yes"
+      account_locked: "no"
+      user_cannot_change_password: "no"
+      groups_action: add
+      groups: 
+        - Utilisateurs
+  tags: service_account

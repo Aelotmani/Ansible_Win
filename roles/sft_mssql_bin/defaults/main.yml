@@ -1,2 +1,16 @@
 ---
 # defaults file for sft_mssql_setup
+sft_mssql_modules: [SQLServerDsc,StorageDsc, ServerManager, dbatools, xNetworking]
+sft_mssql_features: [NET-Framework-Core, NET-Framework-Features, NET-Framework-47-Features, WAS]
+
+# SQL Service Account
+# sft_mysql_userdomainname: cpte-test-ans01
+sft_mysql_sqlsvc_account: sql_svc
+sft_mysql_sqlsvc_pass: P@ssw0rd #sera géré par la suite
+
+# SQL Agent Service Account
+sft_mysql_agentsvc_account: sql_agt
+sft_mysql_agentsvc_pass: P@ssw0rd
+
+# SQL Server instance details
+sft_mysql_instance_name: Test

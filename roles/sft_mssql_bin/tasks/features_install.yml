@@ -1,0 +1,8 @@
+---
+- name: Installer les Pres-requis SQL Server
+  win_feature:
+      name: "{{item}}"
+      include_sub_features: yes
+      state: present
+      with_items:
+        - "{{ sft_mssql_features }}"

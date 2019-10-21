@@ -1,0 +1,129 @@
+---
+- name: Install postgreSQL on windows servers
+  hosts: windows
+  gather_facts: no
+  become: yes
+  become_user: Administrateur
+  vars:
+    postgres_dir_src: "/home/abdelkrim"
+    postgres_dir_tmp: "C:\\temp\\postgres_tmp\\"
+    postgres_major_Version: "10"
+    #postgres_db_user: "sonardb"
+    #postgres_db_user_password: "P@ssw0rd"
+    postgres_installPath: "C:\\Program Files\\PostgreSQL\\{{ postgres_major_Version }}"
+    postgres_dataPath: "{{ postgres_installPath }}\\data"
+    postgres_locale: "French, France"
+    postgres_superpassword: "Passw0rd"
+    postgres_port: "5432"
+    postgres_serviceName: "postgresql"
+    postgres_userName: "postgresql"
+    postgres_userPassword: "ChangeMe!"
+    postgres_PassPath: "C:\\Users\\{{ postgres_userName }}\\AppData\\Roaming\\postgresql"
+
+
+  tasks:
+    - name: Create a temporary directory for postgreSQL
+      win_file:
+        path: "{{ postgres_dir_tmp }}"
+        state: directory
+    
+    - name: Copy file postgreSQL{{ postgres_major_Version }} from source server to target server (Temporaire will be replaced by Nexus)
+      win_copy:
+        src: "{{ postgres_dir_src }}/postgresql-10.10-2-windows-x64.exe"
+        dest: "{{ postgres_dir_tmp }}"
+     
+    
+    - name: Check if file postgreSQL{{ postgres_major_Version }} exist
+      win_stat:
+          path: "{{ postgres_dir_tmp }}\\postgresql-10.10-2-windows-x64.exe"
+      register: check_exec_file
+
+    - name: Create local user {{ postgres_userName }}
+      win_user:
+        name: "{{ postgres_userName }}"
+        password: "{{ postgres_userPassword }}"
+        description: Service user for PostgreSQL
+        password_expired: "no"
+        state: present
+        account_disabled: "no"
+        password_never_expires: "yes"
+        account_locked: "no"
+        user_cannot_change_password: "no"
+        groups_action: add
+        groups: Utilisateurs
+      register: user_exists
+    
+    - debug: 
+        msg: "{{user_exists}}"
+
+    - name: Check if PostgreSQL is already installed
+      win_reg_stat:
+        path: HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\PostgreSQL {{ postgres_major_Version }}
+      register: Postgresql_Installed
+
+    - name: Install PostgreSQL
+      win_shell: |
+        Start-Process "{{ postgres_dir_tmp }}\\postgresql-10.10-2-windows-x64.exe" -ArgumentList "--mode unattended", "--unattendedmodeui none", "--prefix `"{{ postgres_installPath }}`"", "--datadir `"{{ postgres_dataPath }}`"", "--locale `"{{ postgres_locale }}`"", "--superpassword `"{{ postgres_superpassword }}`"", "--serverport `"{{ postgres_port }}`"", "--servicename `"{{ postgres_serviceName }}`"", "--serviceaccount `"{{ postgres_userName }}`"", "--servicepassword `"{{ postgres_userPassword }}`"" -Wait
+      register: pg_installe_result
+      when: 
+        - check_exec_file.stat.exists == True
+        - Postgresql_Installed.exists == False
+
+    - debug: 
+        msg: "{{pg_installe_result}}"
+      when: pg_installe_result.changed
+
+    - name: "Grant full control of postgresql{{ postgres_major_Version }} for user {{ postgres_serviceName }}"
+      win_shell: |
+        $acl = Get-Acl "{{ postgres_installPath }}"
+        $aclDef = "$env:COMPUTERNAME\{{ postgres_userName }}", "FullControl", "ContainerInherit,ObjectInherit", "InheritOnly", "Allow"
+        $aclRule = New-Object System.Security.AccessControl.FileSystemAccessRule $aclDef
+        $acl.SetAccessRule($aclRule);
+        $acl | Set-Acl "{{ postgres_installPath }}"
+      when: pg_installe_result.stdout | length != 0 
+
+    - name: "Creating {{ postgres_PassPath }} directory"
+      win_file:
+        path: "{{ postgres_PassPath }}"
+        state: directory
+
+    - name: "Creating pgpass.conf in {{ postgres_PassPath }} and set content"
+      win_shell: |
+          $pgPassFilePath = Join-Path {{ postgres_PassPath }} "pgpass.conf"
+          $pgPassContent = "localhost:{{ postgres_port }}:*:{{ postgres_userName }}:{{ postgres_userPassword }}"
+          $pgPassContent | Set-Content $pgPassFilePath
+
+    - name: "Changing the owner of {{ postgres_PassPath }} directory "    
+      win_owner:
+          path: "{{ postgres_PassPath }}"
+          user: "{{ postgres_userName }}"
+   
+    - name: "Copying config files to {{ postgres_dataPath }}"
+      win_copy:
+        src: "{{ item}}"
+        dest: "{{ postgres_dataPath }}\\"
+      with_fileglob:
+        - "{{ postgres_dir_src }}/Config/*.conf"
+    
+    - name: "Creating firewall rule for port {{ postgres_port }}"
+      win_firewall_rule:
+        direction: in
+        name: "{{ postgres_serviceName }}_{{ postgres_port }}"
+        action: allow
+        protocol: Tcp
+        description: "Allowed access to {{ postgres_serviceName }} on the port tcp {{ postgres_port }}"
+        enabled: yes
+        localport: "{{ postgres_port }}"
+        state: present
+        profiles: domain
+    
+    - name: "Changing  {{ postgres_serviceName }} windows service user to {{ postgres_userName }}"
+      win_service:
+          name: "{{ postgres_serviceName }}"
+          username: ".\\{{ postgres_userName }}"
+          start_mode: auto
+          state: restarted
+          password: "{{ postgres_userPassword }}"
+      #when: 
+          #- user_created.changed
+          #- pg_installe_result.changed

@@ -1,0 +1,7 @@
+---
+- name: Verifier que les modules powershell "SQLServer DSC", "Storage DSC", "ServerManager", "DBA Tools" et "xNetworking" sont bien chargés
+  win_psmodule:
+    name: "{{item}}"
+    state: present
+  with_items:
+    - "{{ sft_mssql_modules }}"

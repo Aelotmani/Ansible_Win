@@ -1,0 +1,46 @@
+---
+#Create a temporary directory to store download files
+- Name: "create {{ sft_sonar_temp_download_path }} directory"
+  win_file:
+    path: "{{ sft_sonar_temp_download_path }}"
+    state: directory
+
+#Install & configure OpenJDK: Unzip file, add JAVA_HOME version & add Jdk version to golbal sytem path
+- Name: "Extract opnejdk from temp directory"
+  win_unzip:
+      dest: "{{ sft_sonar_jdk_temp_dir }}"
+      src: "{{ sft_sonar_temp_download_path }}\\java-*.zip"
+  register: check_Unzip_jdk_file
+
+- name: copy jdk unziped files to jdk application directory
+  win_copy:
+      src: "{{ sft_sonar_jdk_temp_dir }}//java-*//*"
+      dest: "{{ sft_sonar_jdk_dir }}"
+  when: check_Unzip_jdk_file.changed
+
+- name: Ensure that "{{ sft_sonar_jdk_dir }}" JAVA_HOME is on the machine
+  win_path:
+      elements: "{{ sft_sonar_jdk_dir }}"
+      scope: machine
+      state: present
+      name: JAVA_HOME
+
+- name: Ensure that jdk{{sft_sonar_jdk_major_Version}} are present on the global system path
+  win_path:
+    elements:
+    - '%JAVA_HOME%\bin'
+    scope: machine
+    state: present
+
+#Install PostgreSQL, create the database "sonar" , A database user "sonar" 
+
+
+- name: Create Sonar User for running the SonarQube Services
+  win_user:
+    name: "{{ sft_sonar_user}}"
+    password: "{{ sft_sonar_password }}"
+
+- Name: "Extract SonarQube from temp directory"
+  win_unzip:
+      dest: "{{ sft_sonar_install_dir }}"
+      src: "{{ sft_sonar_temp_download_path }}//sonarqube-{{ sft_sonar_sonar_version }}.zip"
