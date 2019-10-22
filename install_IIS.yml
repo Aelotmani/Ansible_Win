@@ -13,6 +13,11 @@
       win_feature:
         name: web-Server
         state: present
+      register: iis_install
+
+    - name : Reboot after Web-Server Feature installation
+      win_reboot:
+      when: iis_install.reboot_required
     
     - name: Copy file "index.html" from Ansible to iis Server
       win_copy:

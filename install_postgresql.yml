@@ -59,19 +59,27 @@
     - name: Check if PostgreSQL is already installed
       win_reg_stat:
         path: HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\PostgreSQL {{ postgres_major_Version }}
-      register: Postgresql_Installed
+      register: Postgresql_found
 
     - name: Install PostgreSQL
       win_shell: |
-        Start-Process "{{ postgres_dir_tmp }}\\postgresql-10.10-2-windows-x64.exe" -ArgumentList "--mode unattended", "--unattendedmodeui none", "--prefix `"{{ postgres_installPath }}`"", "--datadir `"{{ postgres_dataPath }}`"", "--locale `"{{ postgres_locale }}`"", "--superpassword `"{{ postgres_superpassword }}`"", "--serverport `"{{ postgres_port }}`"", "--servicename `"{{ postgres_serviceName }}`"", "--serviceaccount `"{{ postgres_userName }}`"", "--servicepassword `"{{ postgres_userPassword }}`"" -Wait
-      register: pg_installe_result
+          try { 
+            Start-Process "{{ postgres_dir_tmp }}\\postgresql-10.10-2-windows-x64.exe" -ArgumentList "--mode unattended", "--unattendedmodeui none", `
+                          "--prefix `"{{ postgres_installPath }}`"", `
+                          "--datadir `"{{ postgres_dataPath }}`"", `
+                          "--locale `"{{ postgres_locale }}`"", `
+                          "--superpassword `"{{ postgres_superpassword }}`"", `
+                          "--serverport `"{{ postgres_port }}`"", `
+                          "--servicename `"{{ postgres_serviceName }}`"", `
+                          "--serviceaccount `"{{ postgres_userName }}`"", `
+                          "--servicepassword `"{{ postgres_userPassword }}`"" `
+                          -Wait
+            write-host "pg_installed"
+          }catch{}
+      register: pg_installed
       when: 
         - check_exec_file.stat.exists == True
-        - Postgresql_Installed.exists == False
-
-    - debug: 
-        msg: "{{pg_installe_result}}"
-      when: pg_installe_result.changed
+        - Postgresql_found.exists == False
 
     - name: "Grant full control of postgresql{{ postgres_major_Version }} for user {{ postgres_serviceName }}"
       win_shell: |
@@ -80,7 +88,7 @@
         $aclRule = New-Object System.Security.AccessControl.FileSystemAccessRule $aclDef
         $acl.SetAccessRule($aclRule);
         $acl | Set-Acl "{{ postgres_installPath }}"
-      when: pg_installe_result.stdout | length != 0 
+      when: (pg_installed.stdout | length != 0) or (Postgresql_found.exists == True)
 
     - name: "Creating {{ postgres_PassPath }} directory"
       win_file:
@@ -125,5 +133,32 @@
           state: restarted
           password: "{{ postgres_userPassword }}"
       #when: 
-          #- user_created.changed
-          #- pg_installe_result.changed
+          #- user_exists.changed
+          #- pg_installed.changed
+
+    - name: Determine if Reboot Pending
+      win_shell: |
+        $pendingReboot = $false
+        if (Get-ChildItem "HKLM:\Software\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending" -ErrorAction Ignore) { $pendingReboot = $true }
+        if (Get-Item "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired" -ErrorAction Ignore) { $pendingReboot = $true }
+        if (Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager" -Name PendingFileRenameOperations -ErrorAction Ignore) { $pendingReboot = $true }
+        try { 
+          $util = [wmiclass]"\\.\root\ccm\clientsdk:CCM_ClientUtilities"
+          $status = $util.DetermineIfRebootPending()
+          if(($status -ne $null) -and $status.RebootPending){
+            $pendingReboot = $true
+          }
+        }catch{}
+        write-host $pendingReboot
+      register: Pending_Reboot
+    
+   # - debug: 
+    #    msg: "{{Pending_Reboot}}"
+     # when: Pending_Reboot.stdout_lines[0] == "True"
+
+    - name: Restart \"{{inventory_hostname}}\" server
+      win_reboot:
+        test_command: 'exit (Get-Service - Name {{ postgres_serviceName }}).status -ne "Running"'
+        reboot_timeout: 120
+        msg: Reboot initiated by Ansible
+      when: Pending_Reboot.stdout_lines[0] == "True"

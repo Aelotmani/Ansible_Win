@@ -9,4 +9,5 @@
 
     - name : reboot if required
       win_reboot:
+      reboot_timeout: 3600
       when: update_result.reboot_required
