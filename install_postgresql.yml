@@ -1,7 +1,7 @@
 ---
 - name: Install postgreSQL on windows servers
   hosts: windows
-  gather_facts: no
+  gather_facts: yes
   become: yes
   become_user: Administrateur
   vars:
@@ -22,143 +22,143 @@
 
 
   tasks:
-    - name: Create a temporary directory for postgreSQL
-      win_file:
-        path: "{{ postgres_dir_tmp }}"
-        state: directory
-    
-    - name: Copy file postgreSQL{{ postgres_major_Version }} from source server to target server (Temporaire will be replaced by Nexus)
-      win_copy:
-        src: "{{ postgres_dir_src }}/postgresql-10.10-2-windows-x64.exe"
-        dest: "{{ postgres_dir_tmp }}"
-     
-    
-    - name: Check if file postgreSQL{{ postgres_major_Version }} exist
-      win_stat:
-          path: "{{ postgres_dir_tmp }}\\postgresql-10.10-2-windows-x64.exe"
-      register: check_exec_file
-
-    - name: Create local user {{ postgres_userName }}
-      win_user:
-        name: "{{ postgres_userName }}"
-        password: "{{ postgres_userPassword }}"
-        description: Service user for PostgreSQL
-        password_expired: "no"
-        state: present
-        account_disabled: "no"
-        password_never_expires: "yes"
-        account_locked: "no"
-        user_cannot_change_password: "no"
-        groups_action: add
-        groups: Utilisateurs
-      register: user_exists
-    
-    - debug: 
-        msg: "{{user_exists}}"
-
     - name: Check if PostgreSQL is already installed
       win_reg_stat:
         path: HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\PostgreSQL {{ postgres_major_Version }}
       register: Postgresql_found
 
-    - name: Install PostgreSQL
-      win_shell: |
-          try { 
-            Start-Process "{{ postgres_dir_tmp }}\\postgresql-10.10-2-windows-x64.exe" -ArgumentList "--mode unattended", "--unattendedmodeui none", `
-                          "--prefix `"{{ postgres_installPath }}`"", `
-                          "--datadir `"{{ postgres_dataPath }}`"", `
-                          "--locale `"{{ postgres_locale }}`"", `
-                          "--superpassword `"{{ postgres_superpassword }}`"", `
-                          "--serverport `"{{ postgres_port }}`"", `
-                          "--servicename `"{{ postgres_serviceName }}`"", `
-                          "--serviceaccount `"{{ postgres_userName }}`"", `
-                          "--servicepassword `"{{ postgres_userPassword }}`"" `
-                          -Wait
-            write-host "pg_installed"
-          }catch{}
-      register: pg_installed
+    - name: Installing PostgreSQL{{ postgres_major_Version }} in progress.....
+      block:
+        - name: Create a temporary directory for postgreSQL
+          win_file:
+            path: "{{ postgres_dir_tmp }}"
+            state: directory
+        
+        - name: Copy file postgreSQL{{ postgres_major_Version }} from source server to target server (Temporaire will be replaced by Nexus)
+          win_copy:
+            src: "{{ item }}"
+            dest: "{{ postgres_dir_tmp }}"
+          with_fileglob:
+                - "{{ postgres_dir_src }}/postgresql-{{ postgres_major_Version }}.*.exe"
+          register: file_copied
+        
+        - name: Check if file postgreSQL{{ postgres_major_Version }} exists
+          win_stat:
+              path: "{{ postgres_dir_tmp }}\\{{ file_copied.results[0].original_basename }}"
+          register: check_exec_file
+          
+        - name: Install PostgreSQL
+          win_shell: |
+              try { 
+                Start-Process "{{ postgres_dir_tmp }}\\postgresql-{{ postgres_major_Version }}.*.exe" -ArgumentList `
+                              "--mode unattended", "--unattendedmodeui none", `
+                              "--prefix `"{{ postgres_installPath }}`"", `
+                              "--datadir `"{{ postgres_dataPath }}`"", `
+                              "--locale `"{{ postgres_locale }}`"", `
+                              "--superpassword `"{{ postgres_superpassword }}`"", `
+                              "--serverport `"{{ postgres_port }}`"", `
+                              "--servicename `"{{ postgres_serviceName }}`"", `
+                              "--serviceaccount `"{{ postgres_userName }}`"", `
+                              "--servicepassword `"{{ postgres_userPassword }}`"" `
+                              -Wait
+                write-host "pg_installed"
+              }catch{}
+          register: pg_installed
+          when: 
+            - check_exec_file.stat.exists == True
+
+        - name: Create local user {{ postgres_userName }}
+          win_user:
+            name: "{{ postgres_userName }}"
+            password: "{{ postgres_userPassword }}"
+            description: Service user for PostgreSQL
+            password_expired: "no"
+            state: present
+            account_disabled: "no"
+            password_never_expires: "yes"
+            account_locked: "no"
+            user_cannot_change_password: "no"
+            groups_action: add
+            groups: Utilisateurs
+          register: user_exists
+
+        - name: Postgress installed, configuration in progress ...
+          block:
+            - name: "Grant full control of postgresql{{ postgres_major_Version }} for user {{ postgres_serviceName }}"
+              win_shell: |
+                $acl = Get-Acl "{{ postgres_installPath }}"
+                $aclDef = "$env:COMPUTERNAME\{{ postgres_userName }}", "FullControl", "ContainerInherit,ObjectInherit", "InheritOnly", "Allow"
+                $aclRule = New-Object System.Security.AccessControl.FileSystemAccessRule $aclDef
+                $acl.SetAccessRule($aclRule);
+                $acl | Set-Acl "{{ postgres_installPath }}"
+
+            - name: "Creating {{ postgres_PassPath }} directory"
+              win_file:
+                path: "{{ postgres_PassPath }}"
+                state: directory
+
+            - name: "Creating pgpass.conf in {{ postgres_PassPath }} and set content"
+              win_shell: |
+                  $pgPassFilePath = Join-Path {{ postgres_PassPath }} "pgpass.conf"
+                  $pgPassContent = "localhost:{{ postgres_port }}:*:{{ postgres_userName }}:{{ postgres_userPassword }}"
+                  $pgPassContent | Set-Content $pgPassFilePath
+
+            - name: "Changing the owner of {{ postgres_PassPath }} directory "    
+              win_owner:
+                  path: "{{ postgres_PassPath }}"
+                  user: "{{ postgres_userName }}"
+          
+            - name: "Copying config files to {{ postgres_dataPath }}"
+              win_copy:
+                src: "{{ item }}"
+                dest: "{{ postgres_dataPath }}\\"
+              with_fileglob:
+                - "{{ postgres_dir_src }}/Config/*.conf"
+            
+            - name: "Creating firewall rule for port {{ postgres_port }}"
+              win_firewall_rule:
+                direction: in
+                name: "{{ postgres_serviceName }}_{{ postgres_port }}"
+                action: allow
+                protocol: Tcp
+                description: "Allowed access to {{ postgres_serviceName }} on the port tcp {{ postgres_port }}"
+                enabled: yes
+                localport: "{{ postgres_port }}"
+                state: present
+                profiles: domain
+            
+            - name: "Changing  {{ postgres_serviceName }} windows service user to {{ postgres_userName }}"
+              win_service:
+                  name: "{{ postgres_serviceName }}"
+                  username: ".\\{{ postgres_userName }}"
+                  start_mode: auto
+                  state: restarted
+                  password: "{{ postgres_userPassword }}"
+
+            - name: Determine if Reboot Pending
+              win_shell: |
+                $pendingReboot = $false
+                if (Get-ChildItem "HKLM:\Software\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending" -ErrorAction Ignore) { $pendingReboot = $true }
+                if (Get-Item "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired" -ErrorAction Ignore) { $pendingReboot = $true }
+                if (Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager" -Name PendingFileRenameOperations -ErrorAction Ignore) { $pendingReboot = $true }
+                try { 
+                  $util = [wmiclass]"\\.\root\ccm\clientsdk:CCM_ClientUtilities"
+                  $status = $util.DetermineIfRebootPending()
+                  if(($status -ne $null) -and $status.RebootPending){
+                    $pendingReboot = $true
+                  }
+                }catch{}
+                write-host $pendingReboot
+              register: Pending_Reboot
+
+            - name: Restart \"{{inventory_hostname}}\" server
+              win_reboot:
+                test_command: (Get-Service -Name {{ postgres_serviceName }}).WaitForStatus("Running")
+                reboot_timeout: 300
+                msg: Reboot initiated by Ansible
+              when: Pending_Reboot.stdout_lines[0] == "True"
+          when: (pg_installed.stdout_lines[0] == "pg_installed") and (user_exists.name | length != 0)
       when: 
-        - check_exec_file.stat.exists == True
         - Postgresql_found.exists == False
-
-    - name: "Grant full control of postgresql{{ postgres_major_Version }} for user {{ postgres_serviceName }}"
-      win_shell: |
-        $acl = Get-Acl "{{ postgres_installPath }}"
-        $aclDef = "$env:COMPUTERNAME\{{ postgres_userName }}", "FullControl", "ContainerInherit,ObjectInherit", "InheritOnly", "Allow"
-        $aclRule = New-Object System.Security.AccessControl.FileSystemAccessRule $aclDef
-        $acl.SetAccessRule($aclRule);
-        $acl | Set-Acl "{{ postgres_installPath }}"
-      when: (pg_installed.stdout | length != 0) or (Postgresql_found.exists == True)
-
-    - name: "Creating {{ postgres_PassPath }} directory"
-      win_file:
-        path: "{{ postgres_PassPath }}"
-        state: directory
-
-    - name: "Creating pgpass.conf in {{ postgres_PassPath }} and set content"
-      win_shell: |
-          $pgPassFilePath = Join-Path {{ postgres_PassPath }} "pgpass.conf"
-          $pgPassContent = "localhost:{{ postgres_port }}:*:{{ postgres_userName }}:{{ postgres_userPassword }}"
-          $pgPassContent | Set-Content $pgPassFilePath
-
-    - name: "Changing the owner of {{ postgres_PassPath }} directory "    
-      win_owner:
-          path: "{{ postgres_PassPath }}"
-          user: "{{ postgres_userName }}"
-   
-    - name: "Copying config files to {{ postgres_dataPath }}"
-      win_copy:
-        src: "{{ item}}"
-        dest: "{{ postgres_dataPath }}\\"
-      with_fileglob:
-        - "{{ postgres_dir_src }}/Config/*.conf"
-    
-    - name: "Creating firewall rule for port {{ postgres_port }}"
-      win_firewall_rule:
-        direction: in
-        name: "{{ postgres_serviceName }}_{{ postgres_port }}"
-        action: allow
-        protocol: Tcp
-        description: "Allowed access to {{ postgres_serviceName }} on the port tcp {{ postgres_port }}"
-        enabled: yes
-        localport: "{{ postgres_port }}"
-        state: present
-        profiles: domain
-    
-    - name: "Changing  {{ postgres_serviceName }} windows service user to {{ postgres_userName }}"
-      win_service:
-          name: "{{ postgres_serviceName }}"
-          username: ".\\{{ postgres_userName }}"
-          start_mode: auto
-          state: restarted
-          password: "{{ postgres_userPassword }}"
-      #when: 
-          #- user_exists.changed
-          #- pg_installed.changed
-
-    - name: Determine if Reboot Pending
-      win_shell: |
-        $pendingReboot = $false
-        if (Get-ChildItem "HKLM:\Software\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending" -ErrorAction Ignore) { $pendingReboot = $true }
-        if (Get-Item "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired" -ErrorAction Ignore) { $pendingReboot = $true }
-        if (Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager" -Name PendingFileRenameOperations -ErrorAction Ignore) { $pendingReboot = $true }
-        try { 
-          $util = [wmiclass]"\\.\root\ccm\clientsdk:CCM_ClientUtilities"
-          $status = $util.DetermineIfRebootPending()
-          if(($status -ne $null) -and $status.RebootPending){
-            $pendingReboot = $true
-          }
-        }catch{}
-        write-host $pendingReboot
-      register: Pending_Reboot
-    
-   # - debug: 
-    #    msg: "{{Pending_Reboot}}"
-     # when: Pending_Reboot.stdout_lines[0] == "True"
-
-    - name: Restart \"{{inventory_hostname}}\" server
-      win_reboot:
-        test_command: 'exit (Get-Service - Name {{ postgres_serviceName }}).status -ne "Running"'
-        reboot_timeout: 120
-        msg: Reboot initiated by Ansible
-      when: Pending_Reboot.stdout_lines[0] == "True"
+        - ansible_facts["os_family"] == "Windows"
+        - ansible_facts["distribution_major_version"] == "10"
