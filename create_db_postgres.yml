@@ -1,0 +1,50 @@
+---
+- name: Create Postgresql database
+  hosts: windows
+  gather_facts: no
+  become: yes
+  become_user: Administrateur
+  vars:
+    postgres_major_Version: "10"
+    postgres_installPath: "C:\\Program Files\\PostgreSQL\\{{ postgres_major_Version }}"
+    postgresql_user_name: "sonardb"
+    #postgresql_user_port: 5432
+    postgresql_db_name: "sonardb"
+    postgresql_db_pwd: "ChangeMe!"
+    postgresql_no_log: yes
+  tasks:
+    - name: Check if PostgreSQL is already installed
+      win_reg_stat:
+        path: HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\PostgreSQL {{ postgres_major_Version }}
+      register: Postgresql_found
+
+    - name: Create Database in progress....
+      block:
+        - name: Create Environment variable PGSQL for Postgresql{{ postgres_major_Version }}
+          win_path:
+            elements: "{{ postgres_installPath }}"
+            scope: machine
+            state: present
+            name: PGSQL
+
+        - name: Create the global system path for Postgresql{{ postgres_major_Version }}
+          win_path:
+            elements:
+            - '%PGSQL%\bin'
+            scope: machine
+            state: present
+
+        - name: Create the role {{ postgresql_user_name }} for the database {{ postgresql_db_name }} 
+          win_shell: |
+              $envvar = $env:PGSQL
+              $roleScript = "CREATE USER {{ postgresql_user_name }} WITH ENCRYPTED  PASSWORD '{{ postgresql_db_pwd }}'"
+              cd "$envvar\\bin"
+              $roleScript | .\\psql.exe -U postgres
+
+        - name: Create database {{ postgresql_db_name }} with Owner {{ postgresql_user_name }}
+          win_shell: |
+              $envvar = $env:PGSQL
+              $dbScript = "CREATE DATABASE {{ postgresql_db_name }} OWNER {{ postgresql_user_name }}"
+              cd "$envvar\\bin"
+              $dbScript | .\\psql.exe -U postgres
+      when: Postgresql_found.exists == True
