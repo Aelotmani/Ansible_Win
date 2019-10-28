@@ -13,13 +13,12 @@
     postgres_installPath: "C:\\Program Files\\PostgreSQL\\{{ postgres_major_Version }}"
     postgres_dataPath: "{{ postgres_installPath }}\\data"
     postgres_locale: "French, France"
-    postgres_superpassword: "Passw0rd"
+    postgres_password: "Passw0rd!"
     postgres_port: "5432"
     postgres_serviceName: "postgresql"
-    postgres_userName: "postgresql"
-    postgres_userPassword: "ChangeMe!"
+    postgres_userName: "postgres"
+    #postgres_userPassword: "ChangeMe!"
     postgres_PassPath: "C:\\Users\\{{ postgres_userName }}\\AppData\\Roaming\\postgresql"
-
 
   tasks:
     - name: Check if PostgreSQL is already installed
@@ -46,31 +45,11 @@
           win_stat:
               path: "{{ postgres_dir_tmp }}\\{{ file_copied.results[0].original_basename }}"
           register: check_exec_file
-          
-        - name: Install PostgreSQL
-          win_shell: |
-              try { 
-                Start-Process "{{ postgres_dir_tmp }}\\postgresql-{{ postgres_major_Version }}.*.exe" -ArgumentList `
-                              "--mode unattended", "--unattendedmodeui none", `
-                              "--prefix `"{{ postgres_installPath }}`"", `
-                              "--datadir `"{{ postgres_dataPath }}`"", `
-                              "--locale `"{{ postgres_locale }}`"", `
-                              "--superpassword `"{{ postgres_superpassword }}`"", `
-                              "--serverport `"{{ postgres_port }}`"", `
-                              "--servicename `"{{ postgres_serviceName }}`"", `
-                              "--serviceaccount `"{{ postgres_userName }}`"", `
-                              "--servicepassword `"{{ postgres_userPassword }}`"" `
-                              -Wait
-                write-host "pg_installed"
-              }catch{}
-          register: pg_installed
-          when: 
-            - check_exec_file.stat.exists == True
-
+        
         - name: Create local user {{ postgres_userName }}
           win_user:
             name: "{{ postgres_userName }}"
-            password: "{{ postgres_userPassword }}"
+            password: "{{ postgres_password }}"
             description: Service user for PostgreSQL
             password_expired: "no"
             state: present
@@ -81,6 +60,77 @@
             groups_action: add
             groups: Utilisateurs
           register: user_exists
+        
+        - name: Create user profile for {{ postgres_userName }}
+          win_shell: | 
+                $script:nativeMethods = @();
+                function Register-NativeMethod([string]$dll, [string]$methodSignature)
+                {
+                    $script:nativeMethods += [PSCustomObject]@{ Dll = $dll; Signature = $methodSignature; }
+                }
+                function Add-NativeMethods()
+                {
+                    $nativeMethodsCode = $script:nativeMethods | ForEach-Object { "
+                        [DllImport(`"$($_.Dll)`")]
+                        public static extern $($_.Signature);" 
+                        }
+                    Add-Type @"
+                        using System;
+                        using System.Text;
+                        using System.Runtime.InteropServices;
+                        public static class NativeMethods {
+                            $nativeMethodsCode
+                        }
+                "@ 
+                }
+                if (-not ([System.Management.Automation.PSTypeName]'NativeMethods').Type)
+                {
+                  Register-NativeMethod "userenv.dll" "int CreateProfile([MarshalAs(UnmanagedType.LPWStr)] string pszUserSid,`
+                  [MarshalAs(UnmanagedType.LPWStr)] string pszUserName,`
+                  [Out][MarshalAs(UnmanagedType.LPWStr)] StringBuilder pszProfilePath, uint cchProfilePath)";
+                  Add-NativeMethods;
+                }
+                $localUser = New-Object System.Security.Principal.NTAccount("{{ postgres_userName }}");
+                $userSID = $localUser.Translate([System.Security.Principal.SecurityIdentifier]);
+                $sb = new-object System.Text.StringBuilder(260);
+                $pathLen = $sb.Capacity;
+                try
+                {
+                  $returnCode= [NativeMethods]::CreateProfile($userSID.Value, $localUser.Value, $sb, $pathLen);
+                  if ($returnCode -eq 0){
+                    write-host "The user Profile has been created. Return Code = $returnCode"
+                  } elseif ($returnCode -eq -2147024713) { 
+                      write-host "The user Profile already exists. Return Code = $returnCode " 
+                    }  else { write-host "ErrorCode = $returnCode "}
+                }
+                catch
+                {
+                  Write-Error $_.Exception.Message;
+                  break;
+                }
+
+        - name: Install PostgreSQL
+          win_shell: |
+              try { 
+                Start-Process "{{ postgres_dir_tmp }}\\postgresql-{{ postgres_major_Version }}.*.exe" -ArgumentList `
+                              "--mode unattended", "--unattendedmodeui none", `
+                              "--prefix `"{{ postgres_installPath }}`"", `
+                              "--datadir `"{{ postgres_dataPath }}`"", `
+                              "--locale `"{{ postgres_locale }}`"", `
+                              "--superpassword `"{{ postgres_password }}`"", `
+                              "--serverport `"{{ postgres_port }}`"", `
+                              "--servicename `"{{ postgres_serviceName }}`"", `
+                              "--serviceaccount `"{{ postgres_userName }}`"", `
+                              "--servicepassword `"{{ postgres_password }}`"" `
+                              -Wait
+                write-host "pg_installed"
+              }catch{
+                Write-Error $_.Exception.Message;
+                break;
+              }
+          register: pg_installed
+          when: 
+            - check_exec_file.stat.exists == True
 
         - name: Postgress installed, configuration in progress ...
           block:
@@ -100,7 +150,7 @@
             - name: "Creating pgpass.conf in {{ postgres_PassPath }} and set content"
               win_shell: |
                   $pgPassFilePath = Join-Path {{ postgres_PassPath }} "pgpass.conf"
-                  $pgPassContent = "localhost:{{ postgres_port }}:*:{{ postgres_userName }}:{{ postgres_userPassword }}"
+                  $pgPassContent = "localhost:{{ postgres_port }}:*:{{ postgres_userName }}:{{ postgres_password }}"
                   $pgPassContent | Set-Content $pgPassFilePath
 
             - name: "Changing the owner of {{ postgres_PassPath }} directory "    
@@ -133,7 +183,7 @@
                   username: ".\\{{ postgres_userName }}"
                   start_mode: auto
                   state: restarted
-                  password: "{{ postgres_userPassword }}"
+                  password: "{{ postgres_password }}"
 
             - name: Determine if Reboot Pending
               win_shell: |
@@ -151,7 +201,7 @@
                 write-host $pendingReboot
               register: Pending_Reboot
 
-            - name: Restart \"{{inventory_hostname}}\" server
+            - name: Restart "{{inventory_hostname}}" server
               win_reboot:
                 test_command: (Get-Service -Name {{ postgres_serviceName }}).WaitForStatus("Running")
                 reboot_timeout: 300

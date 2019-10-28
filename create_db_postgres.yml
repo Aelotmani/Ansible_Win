@@ -7,10 +7,11 @@
   vars:
     postgres_major_Version: "10"
     postgres_installPath: "C:\\Program Files\\PostgreSQL\\{{ postgres_major_Version }}"
-    postgresql_user_name: "sonardb"
+    postgresql_user_name: "sonar"
     #postgresql_user_port: 5432
     postgresql_db_name: "sonardb"
     postgresql_db_pwd: "ChangeMe!"
+    postgres_userName: "postgres"
     postgresql_no_log: yes
   tasks:
     - name: Check if PostgreSQL is already installed
@@ -39,12 +40,12 @@
               $envvar = $env:PGSQL
               $roleScript = "CREATE USER {{ postgresql_user_name }} WITH ENCRYPTED  PASSWORD '{{ postgresql_db_pwd }}'"
               cd "$envvar\\bin"
-              $roleScript | .\\psql.exe -U postgres
+              $roleScript | .\\psql.exe -U {{ postgres_userName }}
 
         - name: Create database {{ postgresql_db_name }} with Owner {{ postgresql_user_name }}
           win_shell: |
               $envvar = $env:PGSQL
               $dbScript = "CREATE DATABASE {{ postgresql_db_name }} OWNER {{ postgresql_user_name }}"
               cd "$envvar\\bin"
-              $dbScript | .\\psql.exe -U postgres
+              $dbScript | .\\psql.exe -U {{ postgres_userName }}
       when: Postgresql_found.exists == True
