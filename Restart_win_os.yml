@@ -1,0 +1,23 @@
+---
+- name: Determine if Reboot Pending
+  win_shell: |
+    $pendingReboot = $false
+    if (Get-ChildItem "HKLM:\Software\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending" -ErrorAction Ignore) { $pendingReboot = $true }
+    if (Get-Item "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired" -ErrorAction Ignore) { $pendingReboot = $true }
+    if (Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager" -Name PendingFileRenameOperations -ErrorAction Ignore) { $pendingReboot = $true }
+    try { 
+      $util = [wmiclass]"\\.\root\ccm\clientsdk:CCM_ClientUtilities"
+      $status = $util.DetermineIfRebootPending()
+      if(($status -ne $null) -and $status.RebootPending){
+        $pendingReboot = $true
+      }
+    }catch{}
+    write-Output $pendingReboot
+  register: Pending_Reboot
+
+- name: Restart "{{inventory_hostname}}" server in progress ...
+  win_reboot:
+    test_command: whoami
+    reboot_timeout: 300
+    msg: Reboot initiated by Ansible
+  when: Pending_Reboot.stdout_lines[0] == "True"

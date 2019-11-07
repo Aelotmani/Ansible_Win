@@ -1,0 +1,38 @@
+---
+- name: Create a temporary directory for framework
+  win_file:
+    path: "{{ framework_dir_tmp }}"
+    state: directory
+
+- name: Copy framework v{{ framework_Version }} installer from source server to target server (Temporaire will be replaced by Nexus)
+  win_copy:
+    src: "{{ item }}"
+    dest: "{{ framework_dir_tmp }}"
+  with_fileglob:
+    - "{{ framework_dir_src }}/ndp{{ framework_Version }}*.exe"
+  register: file_copied
+
+- name: Check if the framework v{{ framework_Version }} installer exists
+  win_stat:
+      path: "{{ framework_dir_tmp }}\\{{ file_copied.results[0].original_basename }}"
+  register: check_exec_file
+
+- name: Install .NET Framework v{{ framework_Version }} in progress ...
+  win_shell: |
+    try { 
+      Start-Process `"{{ framework_dir_tmp }}\\{{ file_copied.results[0].original_basename }}`" -ArgumentList `
+                    "/q", `
+                    "/norestart"`
+                    -Wait
+      write-Output "framework_installed"
+      }catch{
+      Write-Error $_.Exception.Message
+      break
+      }
+  register: framework_installed
+  when: 
+    - check_exec_file.stat.exists == True
+
+- name: Resatart windows machine after Framework installation
+  include_tasks: ./Restart_win_os.yml
+  when: framework_installed .stdout_lines[0] == "framework_installed"
