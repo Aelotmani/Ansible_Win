@@ -5,10 +5,10 @@
   become: yes
   become_user: Administrateur
   vars:
-    msbuild_major_Version: 15
+    msbuild_major_Version: 16
     msbuild_dir_tmp: "C:\\temp\\msbuild_tmp\\"
     msbuild_dir_src: "/home/abdelkrim/msbuild/{{ msbuild_major_Version }}"
-    framework_Version_user: "4.8" #or "4.7.2"
+    framework_Version_user: "4.7.2" #or "4.8"
     framework_Version: "{{ framework_Version_user.split('.') | join() | int}}"
     framework_dir_tmp: "C:\\temp\\framework_tmp\\"
     framework_dir_src: "/home/abdelkrim/framework" 
@@ -23,59 +23,68 @@
   tasks:
     - name: Check if BuildTools version {{ msbuild_major_Version }} is already installed
       win_shell: | 
-        $tab = @("$Env:programfiles (x86)\Microsoft Visual Studio\2017\BuildTools\MSBuild\15.0\Bin\msbuild.exe"
-        ,"$Env:programfiles (x86)\Microsoft Visual Studio\2017\Enterprise\MSBuild\15.0\Bin\msbuild.exe"
-        ,"$Env:programfiles (x86)\Microsoft Visual Studio\2017\Professional\MSBuild\15.0\Bin\msbuild.exe"
-        ,"$Env:programfiles (x86)\Microsoft Visual Studio\2017\Community\MSBuild\15.0\Bin\msbuild.exe"
-        ,"${Env:ProgramFiles(x86)}\MSBuild\14.0\Bin\MSBuild.exe")
-        $testval=@()
-            foreach($v in $tab){
-              if(Test-Path $v){
-                  if(  ([regex]"(\b[0-9]{1,2})").Match((([regex]"(MSBuild\\\b[0-9]{1,2})").Match($v).Value)).value -eq {{ msbuild_major_Version }}){
-                    $testval+= ($v)
-                  }
-              }
-            }
-            if($testval.count -eq 0){
-              return 0;
-            }else{ return $testval[0]}
+        Function Find-MsBuild([int] $MaxVersion = 16){
+            $community2019Path = "$Env:ProgramFiles (x86)\Microsoft Visual Studio\2019\BuildTools\MSBuild\Current\Bin\MSBuild.exe"
+            $agent2017Path = "$Env:programfiles (x86)\Microsoft Visual Studio\2017\BuildTools\MSBuild\15.0\Bin\msbuild.exe"
+            $dev2017Path = "$Env:programfiles (x86)\Microsoft Visual Studio\2017\Enterprise\MSBuild\15.0\Bin\msbuild.exe"
+            $pro2017Path = "$Env:programfiles (x86)\Microsoft Visual Studio\2017\Professional\MSBuild\15.0\Bin\msbuild.exe"
+            $community2017Path = "$Env:programfiles (x86)\Microsoft Visual Studio\2017\Community\MSBuild\15.0\Bin\msbuild.exe"
+            $fallback2015Path = "${Env:ProgramFiles(x86)}\MSBuild\14.0\Bin\MSBuild.exe"
+            $fallback2013Path = "${Env:ProgramFiles(x86)}\MSBuild\12.0\Bin\MSBuild.exe"
+            If ((16 -le $MaxVersion) -And (Test-Path $community2019Path)) { return $community2019Path }
+            If ((15 -le $MaxVersion) -And (Test-Path $agent2017Path)) { return $agent2017Path} 
+            If ((15 -le $MaxVersion) -And (Test-Path $dev2017Path)) { return $dev2017Path } 
+            If ((15 -le $MaxVersion) -And (Test-Path $pro2017Path)) { return $pro2017Path } 
+            If ((15 -le $MaxVersion) -And (Test-Path $community2017Path)) { return $community2017Path }
+            If ((14 -le $MaxVersion) -And (Test-Path $fallback2015Path)) { return $fallback2015Path } 
+            If ((12 -le $MaxVersion) -And (Test-Path $fallback2013Path)) { return $fallback2013Path } 
+            return 0
+        }
+        Find-MsBuild  -MaxVersion {{ msbuild_major_Version }}
       register: BuildTools_exists
           
    
     - name: Install msbuildTools v{{ msbuild_major_Version }}
-      include_tasks: ./install_msbuild_v{{ msbuild_major_Version }}.yml
+      include_tasks: ./install_msbuild.yml
       when: BuildTools_exists.stdout_lines[0] == "0"
+      register: msbuildTools_installed
 
-    - name: Check the .Net Framework version installed (Should be superior to v 4.6.2)
+    - debug:
+        msg : msbuildTools_installed
+
+    - name: Check the .Net Framework version (Should be superior to v 4.6.2)
       win_shell: |
         $isSuperior = $false
         $netVersion = Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\NET Framework Setup\NDP\v4\Full" -Name Release -ErrorAction Ignore
-        if (($netVersion.Release -ne $null) -and ($netVersion.Release -gt 794802)) { $isSuperior = $true } 
+        if (($netVersion.Release -ne $null) -and ($netVersion.Release -gt 394802)) { $isSuperior = $true } 
         write-Output $isSuperior
       register: check_Framework_version
 
     - name: Install .NET framework v{{ framework_Version }}
       include_tasks: ./install_framework.yml
       when: check_Framework_version.stdout_lines[0] == "False"
+      register: framework_installed
 
     - name: check Java version
       win_shell: |
           $jMVersion = (Get-Command java -ErrorAction Ignore |Select-Object -ExpandProperty version).Major
-          if ($jMVersion -eq $null) {$jMVersion = 0}
+          if ($jMVersion -eq $null) {
+            if ((Get-ChildItem Env:JAVA_HOME -ErrorAction Ignore).name -eq "JAVA_HOME"){
+              $jMVersion = 100}else{ $jMVersion = 0 }
+          }
           write-Output $jMVersion
       register: check_java_version
 
-    - debug:
-        msg: "{{ openjdk_major_Version }}"
-      register: openjdk_MVersion
-
-    - debug:
-        msg: "{{ check_java_version.stdout_lines[0] | int}}"
-      register: java_version_int
-    
     - name: Install openjdk v{{ openjdk_major_Version }}
       include_tasks: ./install_openjdk_sonar.yml
-      when: java_version_int < openjdk_MVersion.msg
+      when: check_java_version.stdout_lines[0] | int < openjdk_major_Version
+      register: openjdk_installed
 
-    - name: Resatart windows machine after msbuildTools installation
-      include_tasks: ./Restart_win_os.yml
+   # - name: Restart windows machine after msbuildTools installation
+    #  include_tasks: ./Restart_win_os.yml
+
+    - name: Restart "{{inventory_hostname}}" server in progress ...
+      win_reboot:
+        test_command: whoami
+        reboot_timeout: 300
+        msg: Reboot initiated by Ansible

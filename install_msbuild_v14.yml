@@ -4,7 +4,7 @@
     path: "{{ msbuild_dir_tmp }}"
     state: directory
 
-- name: Copy file MSBuildTools 14 installer from source server to target server (Temporaire will be replaced by Nexus)
+- name: Copy MSBuildTools 14 installer from source server to target server (Temporaire will be replaced by Nexus)
   win_copy:
     src: "{{ msbuild_dir_src }}/buildtools_full_v14.exe"
     dest: "{{ msbuild_dir_tmp }}"

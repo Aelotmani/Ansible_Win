@@ -18,6 +18,6 @@
 - name: Restart "{{inventory_hostname}}" server in progress ...
   win_reboot:
     test_command: whoami
-    reboot_timeout: 300
+    reboot_timeout: 400
     msg: Reboot initiated by Ansible
   when: Pending_Reboot.stdout_lines[0] == "True"

@@ -4,6 +4,31 @@
     path: "{{ framework_dir_tmp }}"
     state: directory
 
+- name: Installing PostgreSQL{{ postgres_major_Version }} in progress.....
+  block:
+  - name: Copy KB4486153 to target server (Temporaire will be replaced by Nexus)
+    win_copy:
+      src: "{{ framework_dir_src }}/kb4486153.msu"
+      dest: "{{ framework_dir_tmp }}"
+    register: kb_copied
+
+  - name: Check if the KB4486153 exists on the {{ msbuild_dir_tmp }} directory
+    win_stat:
+        path: "{{ framework_dir_tmp }}\\{{ file_copied.original_basename }}"
+    register: check_kb_file
+
+  - name: install the hotfix KB4486153
+    win_hotfix:
+        state: present
+        hotfix_kb: kb4486153
+        source: "{{ framework_dir_tmp }}\\kb4486153.msu"
+    register: kb_installed
+    when: check_kb_file.stat.exists == True
+
+  - win_reboot:
+    when: kb_installed.reboot_required
+  when: framework_Version_user == "4.8"
+
 - name: Copy framework v{{ framework_Version }} installer from source server to target server (Temporaire will be replaced by Nexus)
   win_copy:
     src: "{{ item }}"

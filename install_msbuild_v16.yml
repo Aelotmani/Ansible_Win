@@ -1,0 +1,53 @@
+---
+- name: Create a temporary directory for MSBuildTools
+  win_file:
+    path: "{{ msbuild_dir_tmp }}"
+    state: directory
+
+- name: Copy MSBuildTools 16 installer from source server to target server (Temporaire will be replaced by Nexus)
+  win_copy:
+    src: "{{ msbuild_dir_src }}/vs_BuildTools_16.exe"
+    dest: "{{ msbuild_dir_tmp }}"
+  register: file_copied
+
+- name: Check if the  MSBuildTools V16 file exists
+  win_stat:
+      path: "{{ msbuild_dir_tmp }}\\{{ file_copied.original_basename }}"
+  register: check_exec_file
+
+- name: Download MSBuildTools 16 workload
+  win_shell: |
+    try { 
+      Start-Process `"{{ msbuild_dir_tmp }}\\vs_BuildTools_{{ msbuild_major_Version }}.exe`" -ArgumentList `
+                    "--layout `"{{ msbuild_layout }}`"", `
+                    "--lang `"{{ msbuild_lang }}`"", `
+                    "--add `"{{ msbuild_workload }}`"", `
+                    `"--quiet`", `
+                    `"--wait`", `
+                    `"--includeRecommended`" `
+                    -Wait
+      write-Output "msbuild_downloaded"
+      }catch{
+      Write-Error $_.Exception.Message
+      break
+      }
+  register: msbuild_downloaded
+  when: 
+    - check_exec_file.stat.exists == True
+
+- name: Install MSBuildTools v16  in progress ...
+  win_shell: |
+    try { 
+      Start-Process `"{{ msbuild_layout }}\\vs_BuildTools_16.exe`" -ArgumentList `
+                    "--add `"{{ msbuild_workload }}`"", `
+                    `"--quiet`", `
+                    `"--wait`", `
+                    `"--noweb`" `
+                    -Wait
+      write-Output "msbuild_installed"
+      }catch{
+      Write-Error $_.Exception.Message
+      break
+      }
+  register: msbuild_installed
+  when: msbuild_downloaded.stdout_lines[0] == "msbuild_downloaded"
