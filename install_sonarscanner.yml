@@ -1,0 +1,59 @@
+---
+- name: Create a temporary directory for SonarScanner for MSBuild
+  win_file:
+    path: "{{ sonarscanner_dir_tmp }}"
+    state: directory
+
+- name: Copy file SonarScanner{{ sonarscanner_version }} from source server to target server (Temporaire will be replaced by Nexus)
+  win_copy:
+    src: "{{ item }}"
+    dest: "{{ sonarscanner_dir_tmp }}"
+  with_fileglob:
+    - "{{ sonarscanner_dir_src }}/sonar-scanner-msbuild-{{ sonarscanner_version_user }}.*-net*.zip"
+  register: check_copy_sonarscanner_file
+
+- debug: 
+    msg: "{{ check_copy_sonarscanner_file.results[0].original_basename }}"
+
+- name: Check if SonarScanner{{ sonarscanner_version }} file exists
+  win_stat:
+      path: "{{ sonarscanner_dir_tmp }}\\{{ check_copy_sonarscanner_file.results[0].original_basename }}"
+  register: check_SonarScanner_file
+  when: not check_copy_sonarscanner_file.changed
+
+- name: Install SonarScanner{{ sonarscanner_version }}
+  block:
+    - name: Unblock SonarScanner file
+      win_shell: | 
+        Unblock-File -Path "{{ sonarscanner_dir_tmp }}\\{{ check_copy_sonarscanner_file.results[0].original_basename }}"
+
+    - name: Extract SonarScanner from temp directory to app directory
+      win_unzip:
+        dest: "{{ sonarscanner_app_dir }}"
+        src: "{{ sonarscanner_dir_tmp }}\\{{ check_copy_sonarscanner_file.results[0].original_basename }}"
+      register: unzip_file
+
+    - name: Edit "SonarQube.Analysis.xml" file
+      win_lineinfile:
+          path: "{{sonarscanner_app_dir}}\\SonarQube.Analysis.xml"
+          backrefs: yes
+          backup: yes
+          regexp: '^(.*)(<.*\"{{ item.property}}\">).*(</Property>)$'
+          line: '$1$2{{ item.value }}$3'
+      with_items:
+        - { property: sonar.host.url, value: '{{ sonar_host_url }}' }
+        - { property: sonar.login, value: '{{ sonar_login }}' }
+      when: 
+        - unzip_file.changed
+        - sonar_host_url  is defined
+        - sonar_login  is defined
+          
+    - name: Create the global system path for SonarScanner
+      win_path:
+        elements:
+        - "{{ sonarscanner_app_dir }}"
+        scope: machine
+        state: present
+  when: check_copy_sonarscanner_file.changed or check_SonarScanner_file.stat.exists
+
+

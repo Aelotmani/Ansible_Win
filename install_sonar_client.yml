@@ -1,90 +1,89 @@
 ---
-- name: Install Sonar Scanner on windows OS
+- name: Install Sonar Scanner requirements on windows OS
   hosts: windows
   gather_facts: no
   become: yes
   become_user: Administrateur
   vars:
-    msbuild_major_Version: 16
+    #msbuild_major_Version: 15
     msbuild_dir_tmp: "C:\\temp\\msbuild_tmp\\"
-    msbuild_dir_src: "/home/abdelkrim/msbuild/{{ msbuild_major_Version }}"
-    framework_Version_user: "4.7.2" #or "4.8"
-    framework_Version: "{{ framework_Version_user.split('.') | join() | int}}"
+    msbuild_dir_src: "/home/abdelkrim/msbuild/"
+    framework_Version_user: "4.8" #or "4.7.2"
+    framework_Version: "{{ framework_Version_user.split('.') | join() | int }}"
     framework_dir_tmp: "C:\\temp\\framework_tmp\\"
     framework_dir_src: "/home/abdelkrim/framework" 
     msbuild_layout: "C:\\temp\\layout"
     msbuild_lang: "fr-FR"
-    msbuild_workload: Microsoft.VisualStudio.Workload.MSBuildTools
+    Framework_devpack_version: "4.7.2"
+    msbuild_workload: ["Microsoft.VisualStudio.Workload.MSBuildTools", "Microsoft.Net.Component.{{ Framework_devpack_version }}.TargetingPack"]
     openjdk_dir_src: "/home/abdelkrim"
     openjdk_dir_tmp: "C:\\temp\\openjdk_tmp\\"
     openjdk_major_Version: 11
     openjdk_app_dir: "C:\\Program Files\\java\\"
+    sonarscanner_version_user: "4.7" #or "4.6"
+    sonarscanner_version: "{{ sonarscanner_version_user.split('.') | join() }}"
+    sonarscanner_dir_tmp: "C:\\temp\\sonarscanner_tmp\\"
+    sonarscanner_dir_src: "/home/abdelkrim/sonarscanner/{{ sonarscanner_version}}"
+    sonarscanner_app_dir: "C:\\Program Files\\sonar-scanner-{{ sonarscanner_version}}\\bin"
+    #sonar_host_url: "http://localhost:9000"
+    #sonar_login: "sonarclientlogin"
+    #sonar_password: "sonarclientpasswd"
+    run_action : "All_Step"
+    Project_Key: "Project_test_key" 
+    Solution_Folder: "C:\\temp\\convert_pdf_to_docx\\C#"
+    Token_Sonar_Server: 4205e2f202b828fbdfa4280e1e33ec06f4322201
+    Url_Sonar_Server: "http://localhost:9000"
+    Project_Name: "{{ Project_Key}}"
+    Project_Version: "1.0"
+
+
 
   tasks:
-    - name: Check if BuildTools version {{ msbuild_major_Version }} is already installed
-      win_shell: | 
-        Function Find-MsBuild([int] $MaxVersion = 16){
-            $community2019Path = "$Env:ProgramFiles (x86)\Microsoft Visual Studio\2019\BuildTools\MSBuild\Current\Bin\MSBuild.exe"
-            $agent2017Path = "$Env:programfiles (x86)\Microsoft Visual Studio\2017\BuildTools\MSBuild\15.0\Bin\msbuild.exe"
-            $dev2017Path = "$Env:programfiles (x86)\Microsoft Visual Studio\2017\Enterprise\MSBuild\15.0\Bin\msbuild.exe"
-            $pro2017Path = "$Env:programfiles (x86)\Microsoft Visual Studio\2017\Professional\MSBuild\15.0\Bin\msbuild.exe"
-            $community2017Path = "$Env:programfiles (x86)\Microsoft Visual Studio\2017\Community\MSBuild\15.0\Bin\msbuild.exe"
-            $fallback2015Path = "${Env:ProgramFiles(x86)}\MSBuild\14.0\Bin\MSBuild.exe"
-            $fallback2013Path = "${Env:ProgramFiles(x86)}\MSBuild\12.0\Bin\MSBuild.exe"
-            If ((16 -le $MaxVersion) -And (Test-Path $community2019Path)) { return $community2019Path }
-            If ((15 -le $MaxVersion) -And (Test-Path $agent2017Path)) { return $agent2017Path} 
-            If ((15 -le $MaxVersion) -And (Test-Path $dev2017Path)) { return $dev2017Path } 
-            If ((15 -le $MaxVersion) -And (Test-Path $pro2017Path)) { return $pro2017Path } 
-            If ((15 -le $MaxVersion) -And (Test-Path $community2017Path)) { return $community2017Path }
-            If ((14 -le $MaxVersion) -And (Test-Path $fallback2015Path)) { return $fallback2015Path } 
-            If ((12 -le $MaxVersion) -And (Test-Path $fallback2013Path)) { return $fallback2013Path } 
-            return 0
-        }
-        Find-MsBuild  -MaxVersion {{ msbuild_major_Version }}
-      register: BuildTools_exists
-          
-   
-    - name: Install msbuildTools v{{ msbuild_major_Version }}
-      include_tasks: ./install_msbuild.yml
-      when: BuildTools_exists.stdout_lines[0] == "0"
-      register: msbuildTools_installed
-
-    - debug:
-        msg : msbuildTools_installed
-
     - name: Check the .Net Framework version (Should be superior to v 4.6.2)
       win_shell: |
         $isSuperior = $false
         $netVersion = Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\NET Framework Setup\NDP\v4\Full" -Name Release -ErrorAction Ignore
-        if (($netVersion.Release -ne $null) -and ($netVersion.Release -gt 394802)) { $isSuperior = $true } 
+        if (($netVersion.Release -ne $null) -and ($netVersion.Release -gt 394802)) { $isSuperior = $true } # A modifier
         write-Output $isSuperior
       register: check_Framework_version
 
-    - name: Install .NET framework v{{ framework_Version }}
+    - name: Install .NET framework v{{ framework_Version_user }}
       include_tasks: ./install_framework.yml
-      when: check_Framework_version.stdout_lines[0] == "False"
       register: framework_installed
+      when: check_Framework_version.stdout_lines[0] == "False"
 
     - name: check Java version
       win_shell: |
-          $jMVersion = (Get-Command java -ErrorAction Ignore |Select-Object -ExpandProperty version).Major
-          if ($jMVersion -eq $null) {
-            if ((Get-ChildItem Env:JAVA_HOME -ErrorAction Ignore).name -eq "JAVA_HOME"){
-              $jMVersion = 100}else{ $jMVersion = 0 }
+          $jMVersion = 0
+          if (Test-Path "$env:JAVA_HOME\\bin"){
+            $jMVersion = (Get-Command "$env:JAVA_HOME\\bin\\java.exe" -ErrorAction Ignore |Select-Object -ExpandProperty version).Major
           }
           write-Output $jMVersion
       register: check_java_version
 
     - name: Install openjdk v{{ openjdk_major_Version }}
       include_tasks: ./install_openjdk_sonar.yml
-      when: check_java_version.stdout_lines[0] | int < openjdk_major_Version
       register: openjdk_installed
+      when: check_java_version.stdout_lines[0] | int < openjdk_major_Version
 
-   # - name: Restart windows machine after msbuildTools installation
-    #  include_tasks: ./Restart_win_os.yml
+    - name: Check if SonarScanner{{ sonarscanner_version }} already installed
+      win_stat:
+          path: "{{sonarscanner_app_dir}}\\SonarQube.Analysis.xml"
+      register: SonarScanner_already_installed
 
-    - name: Restart "{{inventory_hostname}}" server in progress ...
+    - name: Install SonarScanner for MSBuild v{{ sonarscanner_version }}
+      include_tasks: ./install_sonarscanner.yml
+      when: not SonarScanner_already_installed.stat.exists
+
+    - name: Restarting "{{inventory_hostname}}" server in progress ...
       win_reboot:
         test_command: whoami
         reboot_timeout: 300
         msg: Reboot initiated by Ansible
+      when: openjdk_installed.changed or framework_installed.changed
+    
+    - name: Check & install the MSBuildTools version that matches the VS version
+      include_tasks: ./install_msbuild.yml
+    
+     #- name: Run Sonar Scanner
+     #  include_tasks: ./Setup_SonarScanner.yml

@@ -1,84 +1,172 @@
 ---
-- name: Create a temporary directory for MSBuildTools
-  win_file:
-    path: "{{ msbuild_dir_tmp }}"
-    state: directory
+- name: Check if sln file exists on the solution folder
+  win_find:
+    paths: "{{ Solution_Folder }}"
+    patterns: '*.sln'
+  register: check_sln_file
 
-- name: Install MSBuildTools V14 in progress ...
+- debug:
+    msg: "{{ check_sln_file.files[0].filename }}"
+
+- name: Check the MSBuild installed version
+  include_tasks: ./check_msbuildversion.yml
+
+- debug: 
+    msg: "MSBuild_path : {{ BuildTools_exists.stdout_lines[0] }}"
+    
+- debug: 
+    msg: "VS_Version : {{ BuildTools_exists.stdout_lines[1] }}"
+
+- name: Install MSBuildTools in progress ...
   block:
-    - name: Copy MSBuildTools 14 installer from source server to target server (Temporaire will be replaced by Nexus)
-      win_copy:
-        src: "{{ msbuild_dir_src }}/buildtools_full_v{{ msbuild_major_Version }}.exe"
-        dest: "{{ msbuild_dir_tmp }}"
-      register: file_copied
-
-    - name: Check if the MSBuildTools V14 installer exists
-      win_stat:
-          path: "{{ msbuild_dir_tmp }}\\{{ file_copied.original_basename }}"
-      register: check_exec_file
+    - name: Create a temporary directory for MSBuildTools
+      win_file:
+        path: "{{ msbuild_dir_tmp }}"
+        state: directory
 
     - name: Install MSBuildTools V14 in progress ...
-      win_shell: |
-        try { 
-            Start-Process `"{{ msbuild_dir_tmp }}\\buildtools_full_v{{ msbuild_major_Version }}.exe`" -ArgumentList `
-                        `"/quiet`", `
-                        `"/full`", `
-                        `"/noWeb`" `
-                        -Wait
-          write-Output "msbuild_installed"
-          }catch{
-          Write-Error $_.Exception.Message
-          break
-          }
-      when: check_exec_file.stat.exists == True
-  when: msbuild_major_Version == 14
+      block:
+        - name: Copy MSBuildTools 14 installer from source server to target server (Temporaire will be replaced by Nexus)
+          win_copy:
+            src: "{{ msbuild_dir_src }}/{{ BuildTools_exists.stdout_lines[1]}}/buildtools_full_v{{ BuildTools_exists.stdout_lines[1] | int }}.exe"
+            dest: "{{ msbuild_dir_tmp }}"
+          register: file_copied
 
-- name: Install MSBuildTools V{{ msbuild_major_Version }} in progress ...
+        - name: Check if the MSBuildTools V14 installer exists
+          win_stat:
+              path: "{{ msbuild_dir_tmp }}\\{{ file_copied.original_basename }}"
+          register: check_exec_file
+
+        - name: Install MSBuildTools V14 in progress ...
+          win_shell: |
+            try { 
+                Start-Process `"{{ msbuild_dir_tmp }}\\buildtools_full_v{{ BuildTools_exists.stdout_lines[1] | int }}.exe`" -ArgumentList `
+                            `"/quiet`", `
+                            `"/full`", `
+                            `"/noWeb`" `
+                            -Wait
+              write-Output "msbuild_installed"
+              }catch{
+              Write-Error $_.Exception.Message
+              break
+              }
+          when: check_exec_file.stat.exists == True
+      when: BuildTools_exists.stdout_lines[1] == "14"
+
+    - name: Install MSBuildTools V{{ BuildTools_exists.stdout_lines[1] }} in progress ...
+      block:
+        - name: Copy MSBuildTools {{ BuildTools_exists.stdout_lines[1] }} installer from source server to target server (Temporaire will be replaced by Nexus)
+          win_copy:
+            src: "{{ msbuild_dir_src }}/{{ BuildTools_exists.stdout_lines[1]}}/vs_BuildTools_{{ BuildTools_exists.stdout_lines[1] | int }}.exe"
+            dest: "{{ msbuild_dir_tmp }}"
+          register: file_copied
+
+        - name: Check if the  MSBuildTools V{{ BuildTools_exists.stdout_lines[1] }} file exists
+          win_stat:
+              path: "{{ msbuild_dir_tmp }}\\{{ file_copied.original_basename }}"
+          register: check_exec_file
+
+        - name: Download MSBuildTools {{ BuildTools_exists.stdout_lines[1] }} workload
+          win_shell: |
+            try { 
+              Start-Process `"{{ msbuild_dir_tmp }}\\vs_BuildTools_{{ BuildTools_exists.stdout_lines[1] | int }}.exe`" -ArgumentList `
+                            "--layout `"{{ msbuild_layout }}`"", `
+                            "--lang `"{{ msbuild_lang }}`"", `
+                            {% for workload in msbuild_workload %}
+                              "--add `"{{workload}}`"", `
+                            {% endfor %}
+                            `"--quiet`", `
+                            `"--wait`", `
+                            `"--includeRecommended`" `
+                            -Wait
+              write-Output "msbuild_downloaded"
+              }catch{
+              Write-Error $_.Exception.Message
+              break
+              }
+          when: check_exec_file.stat.exists == True
+          register: msbuild_downloaded
+
+
+        - name: Install MSBuildTools v{{ BuildTools_exists.stdout_lines[1] }}  in progress ...
+          win_shell: |
+            try { 
+              Start-Process `"{{ msbuild_layout }}\\vs_BuildTools_{{ BuildTools_exists.stdout_lines[1] | int }}.exe`" -ArgumentList `
+                            {% for workload in msbuild_workload %}
+                              "--add `"{{workload}}`"", `
+                            {% endfor %}
+                            `"--quiet`", `
+                            `"--wait`", `
+                            `"--noweb`" `
+                            -Wait
+              write-Output "msbuild_installed"
+              }catch{
+              Write-Error $_.Exception.Message
+              break
+              }
+          when: msbuild_downloaded.stdout_lines[0] == "msbuild_downloaded"
+      when: BuildTools_exists.stdout_lines[1] == "15" or BuildTools_exists.stdout_lines[1] == "16"
+
+    - name: Check if MSBuild installed version
+      include_tasks: ./check_msbuildversion.yml
+      register: BuildTools_installed
+
+    - name: Restart windows machine after msbuildTools installation
+      include_tasks: ./Restart_win_os.yml
+
+  when: BuildTools_exists.stdout_lines[0] == "0"
+
+- name: Traitement SonarScanner in progress ...
   block:
-    - name: Copy MSBuildTools 16 installer from source server to target server (Temporaire will be replaced by Nexus)
-      win_copy:
-        src: "{{ msbuild_dir_src }}/vs_BuildTools_16.exe"
-        dest: "{{ msbuild_dir_tmp }}"
-      register: file_copied
-
-    - name: Check if the  MSBuildTools V16 file exists
-      win_stat:
-          path: "{{ msbuild_dir_tmp }}\\{{ file_copied.original_basename }}"
-      register: check_exec_file
-
-    - name: Download MSBuildTools {{ msbuild_major_Version }} workload
+    - name: Traitement SonarScanner
       win_shell: |
-        try { 
-          Start-Process `"{{ msbuild_dir_tmp }}\\vs_BuildTools_{{ msbuild_major_Version }}.exe`" -ArgumentList `
-                        "--layout `"{{ msbuild_layout }}`"", `
-                        "--lang `"{{ msbuild_lang }}`"", `
-                        "--add `"{{ msbuild_workload }}`"", `
-                        `"--quiet`", `
-                        `"--wait`", `
-                        `"--includeRecommended`" `
-                        -Wait
-          write-Output "msbuild_downloaded"
-          }catch{
-          Write-Error $_.Exception.Message
-          break
+        $SonarScannerMSBuild = "{{ sonarscanner_app_dir}}\\SonarScanner.MSBuild.exe"
+        Function SonarScanner ([Switch]$End,[string]$projectkey,[String]$url,[String]$token,[String]$projectname){
+          if(($End)){
+            $SSMSBuild="&`"$SonarScannerMSBuild`" `"/d:sonar.login=$($token)`" end"	    
+                $SSC = Invoke-expression $SSMSBuild
+            write-host $LASTEXITCODE
+            }else{
+              $SSMSBuild="&`"$SonarScannerMSBuild`" `"/key:$($projectkey)`" `"/n:$($ProjectName)`" `"/d:sonar.login=$($token)`" `"/d:sonar.host.url=$($url)`" `"/v:$($Version)`" begin"
+              $SSC = Invoke-expression $SSMSBuild
+              write-host $LASTEXITCODE
+              }
+        }
+        Function MSbuild([string]$Solution,[switch]$Rebuild,[string]$MSbuildPath){
+          $SSC = invoke-expression "&`"$MSbuildPath`" `"$Solution`" "
+          write-host $LASTEXITCODE
+        }
+        Switch ("{{ run_action }}"){
+          'All_Step' {        
+            SonarScanner -url {{ Url_Sonar_Server }} -projectkey {{ Project_Key }} -token {{ Token_Sonar_Server }} -Version {{ Project_Version }}
+            start-sleep -Seconds 1
+            $SSC=$null
+            if($LASTEXITCODE -eq 0){
+              MSbuild -MSbuildPath "{{ BuildTools_exists.stdout_lines[0] }}" -Solution "{{ check_sln_file.files[0].path }}"
+            }        
+            start-sleep -Seconds 1
+            $SSC=$null
+            if($LASTEXITCODE -eq 0){
+              SonarScanner -End -token {{ Token_Sonar_Server }}
+            }else{ write-host "Error"
+            }
           }
-      when: check_exec_file.stat.exists == True
-      register: msbuild_downloaded
-
-
-    - name: Install MSBuildTools v{{ msbuild_major_Version }}  in progress ...
-      win_shell: |
-        try { 
-          Start-Process `"{{ msbuild_layout }}\\vs_BuildTools_{{ msbuild_major_Version }}.exe`" -ArgumentList `
-                        "--add `"{{ msbuild_workload }}`"", `
-                        `"--quiet`", `
-                        `"--wait`", `
-                        `"--noweb`" `
-                        -Wait
-          write-Output "msbuild_installed"
-          }catch{
-          Write-Error $_.Exception.Message
-          break
+          'Begin_Step' {
+            SonarScanner -url {{ Url_Sonar_Server }} -projectkey {{ Project_Key }} -token {{ Token_Sonar_Server }}
+            start-sleep -Seconds 1
           }
-      when: msbuild_downloaded.stdout_lines[0] == "msbuild_downloaded"
-  when: msbuild_major_Version == 15 or msbuild_major_Version == 16
+          'Build_Step' {
+            MSBuild -MSbuildPath "{{ BuildTools_exists.stdout_lines[0] }}" -Solution "{{ check_sln_file.files[0].path }}"
+          }
+          'End_Step' {
+            SonarScanner -End -token {{ Token_Sonar_Server }}  
+          }
+        }
+      when: 
+          - run_action is defined
+          - Project_Key is defined
+          - Solution_Folder is defined
+          - Token_Sonar_Server is defined
+      register: Sonar_execution_status
+      failed_when: Sonar_execution_status.stderr | length > 0      
+  when: BuildTools_exists.stdout_lines[0] != "0" or BuildTools_installed.stdout_lines[0] != "0"

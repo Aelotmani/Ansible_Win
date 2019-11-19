@@ -1,0 +1,116 @@
+---
+- name: Install Sonar Scanner on windows OS
+  hosts: windows
+  gather_facts: no
+  become: yes
+  become_user: Administrateur
+  vars:
+    #sonarscanner_dir_tmp: "C:\\logs"
+    #log_file: "Setup_SonarScanner_{{ ansible_date_time.iso8601_basic_short |replace('T','_') }}.log"
+    #accepted_action: ['All_Step', 'Begin_Step' , 'Build_Step', 'End_Step']
+    run_action : "All_Step"                                   #[Obligatoire] - Action à réaliser
+    Project_Key: "Project_test_key"                                #[Obligatoire] - Nom du `"projectkey`" SonarServer créé.
+    Solution_Folder: "C:\\temp\\Aspose.HTMLtoMarkdown.Demo"    #[Obligatoire] - Emplacement du code à analyser
+    Token_Sonar_Server:
+    Url_Sonar_Server:
+    Project_Name: "{{ Project_Key}}"                          #[Facultatif] - Par défaut conserve le nom du `"projectkey`" SonarServer créé.
+    #Project_Version:
+    #SonarScannerMSBuild : SonarScanner.MSBuild.exe
+    #sonar_login: "sonarclientlogin"
+    sonarscanner_version_user: "4.7" #or "4.6"
+    sonarscanner_version: "{{ sonarscanner_version_user.split('.') | join() }}"
+    sonarscanner_app_dir: "C:\\Program Files\\sonar-scanner-{{ sonarscanner_version}}\\bin"
+    
+  tasks:
+    - name: Traitement SonarScanner
+      win_shell: |
+        $SonarScannerMSBuild = "{{ sonarscanner_app_dir}}\\SonarScanner.MSBuild.exe"
+        Function SonarScanner ([Switch]$End,[string]$projectkey,[String]$url,[String]$token,[String]$projectname){
+          if(($End)){
+            $SSMSBuild="&`"$SonarScannerMSBuild`" `"/d:sonar.login=$($token)`" end"	    
+                $SSC = Invoke-expression $SSMSBuild
+            write-host $LASTEXITCODE
+            }else{
+              $SSMSBuild="&`"$SonarScannerMSBuild`" `"/key:$($projectkey)`" `"/n:$($ProjectName)`" `"/d:sonar.login=$($token)`" `"/d:sonar.host.url=$($url)`" `"/v:$($Version)`" begin"
+              $SSC = Invoke-expression $SSMSBuild
+              write-host $LASTEXITCODE
+              }
+        }
+        Function MSbuild([string]$Solution,[switch]$Rebuild,[string]$MSbuildPath){
+          $SSC = invoke-expression "&`"$MSbuildPath`" `"$Solution`" "
+          write-host $LASTEXITCODE
+        }
+        Switch ({{ run_action }}){
+          'All_Step' {        
+            SonarScanner -url $URL -projectkey $projectkey -token $Token
+            start-sleep -Seconds 1
+            $SSC=$null
+            if($LASTEXITCODE -eq 0){
+              MSbuild -MSbuildPath $MSBuild -Solution "{{Solution_Folder }}"
+            }        
+            start-sleep -Seconds 1
+            $SSC=$null
+            if($LASTEXITCODE -eq 0){
+              SonarScanner -End -token $Token
+            }else{ write-host "Error"
+            }
+          }
+          'Begin_Step' {
+            SonarScanner -url $URL -projectkey $projectkey -token $Token
+            start-sleep -Seconds 1
+          }
+          'Build_Step' {
+            MSBuild -MSbuildPath $MSBuild -Solution $Solution
+          }
+          'End_Step' {
+            SonarScanner -End -token $Token  
+          }
+        }
+      when: 
+          - run_action is defined
+          - Project_Key is defined
+          - Solution_Folder is defined
+          - Token_Sonar_Server is defined
+
+    - name: Get attribute from SonnarScanner XML file
+      win_shell: |
+        Function GetPropertiesSonarQube ([string]$SonarConfigXML
+        ,[Parameter()][ValidateSet('sonar.host.url','sonar.login','sonar.password','sonar.projectName',`
+        'sonar.projectDescription','sonar.projectVersion','sonar.ProjectKey')][string[]]$Property){
+        ($SonarQubeXML.SonarQubeAnalysisProperties.Property | Where-Object{$_.Name -eq $Property})."#text"
+        ($SonarQubeXML.SonarQubeAnalysisProperties.Property | Where-Object{$_.Name -eq $Property})
+        }
+        [string]$xmlpath = "{{sonarscanner_app_dir}}\\SonarQube.Analysis.xml"
+        if((test-path $xmlpath) -eq $true){
+          [xml]$SonarQubeXML = Get-Content $xmlpath
+          $URL_tmp = (GetPropertiesSonarQube -SonarConfigXML $SonarQubeXML -Property sonar.host.url).innertext
+          $URL = "{{ Url_Sonar_Server if Url_Sonar_Server is defined else '$URL_tmp'}}"
+          $ProjectKey_tmp = (GetPropertiesSonarQube -SonarConfigXML $SonarQubeXML -Property sonar.ProjectKey).innertext
+          $ProjectKey = "{{ Project_Key if Project_Key is defined else '$ProjectKey_tmp'}}"
+          $Version_tmp = (GetPropertiesSonarQube -SonarConfigXML $SonarQubeXML -Property sonar.projectVersion).innertext
+          $Version = "{{ Project_Version  if  Project_Version is defined else '$Version_tmp'}}"
+          $ProjectName_tmp = (GetPropertiesSonarQube -SonarConfigXML $SonarQubeXML -Property sonar.projectName).innertext
+          $ProjectName = "{{ Project_Name if Project_Name is defined else '$ProjectName_tmp'}}"
+          $Token_tmp = (GetPropertiesSonarQube -SonarConfigXML $SonarQubeXML -Property sonar.login).innertext
+          $Token = "{{ sonar_login if sonar_login is defined else '$Token_tmp'}}"
+        }
+        $result = @($URL, $ProjectKey, $Version, $ProjectName, $Token)
+        for($i=0;$i -lt $result.count;$i++){
+          write-host $result[$i]   
+        }
+      register: SonarScanner_attribute
+
+    - debug: 
+        msg: "{{ SonarScanner_attribute.stdout_lines }}"
+        
+
+    
+
+
+          
+        
+
+      
+
+
+    

@@ -4,7 +4,7 @@
     path: "{{ framework_dir_tmp }}"
     state: directory
 
-- name: Installing PostgreSQL{{ postgres_major_Version }} in progress.....
+- name: Installing framework{{ framework_Version_user }} in progress.....
   block:
   - name: Copy KB4486153 to target server (Temporaire will be replaced by Nexus)
     win_copy:
@@ -14,7 +14,7 @@
 
   - name: Check if the KB4486153 exists on the {{ msbuild_dir_tmp }} directory
     win_stat:
-        path: "{{ framework_dir_tmp }}\\{{ file_copied.original_basename }}"
+        path: "{{ framework_dir_tmp }}\\{{ kb_copied.original_basename }}"
     register: check_kb_file
 
   - name: install the hotfix KB4486153

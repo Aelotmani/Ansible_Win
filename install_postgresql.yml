@@ -204,7 +204,7 @@
             - name: Restart "{{inventory_hostname}}" server
               win_reboot:
                 test_command: (Get-Service -Name {{ postgres_serviceName }}).WaitForStatus("Running")
-                reboot_timeout: 300
+                reboot_timeout: 100
                 msg: Reboot initiated by Ansible
               when: Pending_Reboot.stdout_lines[0] == "True"
           when: (pg_installed.stdout_lines[0] == "pg_installed") and (user_exists.name | length != 0)
