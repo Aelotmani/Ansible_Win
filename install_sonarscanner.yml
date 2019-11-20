@@ -13,7 +13,7 @@
   register: check_copy_sonarscanner_file
 
 - debug: 
-  msg: "{{ check_copy_sonarscanner_file.results[0].original_basename }}"
+    msg: "{{ check_copy_sonarscanner_file.results[0].original_basename }}"
 
 - name: Check if SonarScanner{{ sonarscanner_version }} file exists
   win_stat:
