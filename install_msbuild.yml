@@ -6,16 +6,16 @@
   register: check_sln_file
 
 - debug:
-    msg: "{{ check_sln_file.files[0].filename }}"
+  msg: "{{ check_sln_file.files[0].filename }}"
 
 - name: Check the MSBuild installed version
   include_tasks: ./check_msbuildversion.yml
 
 - debug: 
-    msg: "MSBuild_path : {{ BuildTools_exists.stdout_lines[0] }}"
+  msg: "MSBuild_path : {{ BuildTools_exists.stdout_lines[0] }}"
     
 - debug: 
-    msg: "VS_Version : {{ BuildTools_exists.stdout_lines[1] }}"
+  msg: "VS_Version : {{ BuildTools_exists.stdout_lines[1] }}"
 
 - name: Install MSBuildTools in progress ...
   block:
@@ -63,7 +63,7 @@
 
         - name: Check if the  MSBuildTools V{{ BuildTools_exists.stdout_lines[1] }} file exists
           win_stat:
-              path: "{{ msbuild_dir_tmp }}\\{{ file_copied.original_basename }}"
+            path: "{{ msbuild_dir_tmp }}\\{{ file_copied.original_basename }}"
           register: check_exec_file
 
         - name: Download MSBuildTools {{ BuildTools_exists.stdout_lines[1] }} workload

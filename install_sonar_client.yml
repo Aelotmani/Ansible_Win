@@ -28,13 +28,15 @@
     #sonar_host_url: "http://localhost:9000"
     #sonar_login: "sonarclientlogin"
     #sonar_password: "sonarclientpasswd"
-    run_action : "All_Step"
+    run_action : "All_Step" #'All_Step', 'Begin_Step' , 'Build_Step', 'End_Step'
     Project_Key: "Project_test_key" 
     Solution_Folder: "C:\\temp\\convert_pdf_to_docx\\C#"
-    Token_Sonar_Server: 4205e2f202b828fbdfa4280e1e33ec06f4322201
+    Token_Sonar_Server: 4dc82abaef595711665e317d53e830544bf290c9
     Url_Sonar_Server: "http://localhost:9000"
     Project_Name: "{{ Project_Key}}"
     Project_Version: "1.0"
+    #TrustKeystore_file: "{{ openjdk_app_dir }}TrustKeystore_PKI-EDF_SHA256\\TrustKeystore"
+    #sonar_scanner_opts: "-Djavax.net.ssl.trustStore={{ TrustKeystore_file }}" #space between options
 
 
 
@@ -43,7 +45,7 @@
       win_shell: |
         $isSuperior = $false
         $netVersion = Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\NET Framework Setup\NDP\v4\Full" -Name Release -ErrorAction Ignore
-        if (($netVersion.Release -ne $null) -and ($netVersion.Release -gt 394802)) { $isSuperior = $true } # A modifier
+        if (($netVersion.Release -ne $null) -and ($netVersion.Release -gt 394802)) { $isSuperior = $true }
         write-Output $isSuperior
       register: check_Framework_version
 
@@ -54,11 +56,11 @@
 
     - name: check Java version
       win_shell: |
-          $jMVersion = 0
-          if (Test-Path "$env:JAVA_HOME\\bin"){
-            $jMVersion = (Get-Command "$env:JAVA_HOME\\bin\\java.exe" -ErrorAction Ignore |Select-Object -ExpandProperty version).Major
-          }
-          write-Output $jMVersion
+        $jMVersion = 0
+        if (Test-Path "$env:JAVA_HOME\\bin"){
+          $jMVersion = (Get-Command "$env:JAVA_HOME\\bin\\java.exe" -ErrorAction Ignore |Select-Object -ExpandProperty version).Major
+        }
+        write-Output $jMVersion
       register: check_java_version
 
     - name: Install openjdk v{{ openjdk_major_Version }}
@@ -68,7 +70,7 @@
 
     - name: Check if SonarScanner{{ sonarscanner_version }} already installed
       win_stat:
-          path: "{{sonarscanner_app_dir}}\\SonarQube.Analysis.xml"
+        path: "{{sonarscanner_app_dir}}\\SonarQube.Analysis.xml"
       register: SonarScanner_already_installed
 
     - name: Install SonarScanner for MSBuild v{{ sonarscanner_version }}
@@ -84,6 +86,3 @@
     
     - name: Check & install the MSBuildTools version that matches the VS version
       include_tasks: ./install_msbuild.yml
-    
-     #- name: Run Sonar Scanner
-     #  include_tasks: ./Setup_SonarScanner.yml

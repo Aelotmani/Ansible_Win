@@ -14,14 +14,14 @@
 
   - name: Check if the KB4486153 exists on the {{ msbuild_dir_tmp }} directory
     win_stat:
-        path: "{{ framework_dir_tmp }}\\{{ kb_copied.original_basename }}"
+      path: "{{ framework_dir_tmp }}\\{{ kb_copied.original_basename }}"
     register: check_kb_file
 
   - name: install the hotfix KB4486153
     win_hotfix:
-        state: present
-        hotfix_kb: kb4486153
-        source: "{{ framework_dir_tmp }}\\kb4486153.msu"
+      state: present
+      hotfix_kb: kb4486153
+      source: "{{ framework_dir_tmp }}\\kb4486153.msu"
     register: kb_installed
     when: check_kb_file.stat.exists == True
 
@@ -39,7 +39,7 @@
 
 - name: Check if the framework v{{ framework_Version }} installer exists
   win_stat:
-      path: "{{ framework_dir_tmp }}\\{{ file_copied.results[0].original_basename }}"
+    path: "{{ framework_dir_tmp }}\\{{ file_copied.results[0].original_basename }}"
   register: check_exec_file
 
 - name: Install .NET Framework v{{ framework_Version }} in progress ...

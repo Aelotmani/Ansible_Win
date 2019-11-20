@@ -4,7 +4,7 @@
     path: "{{ openjdk_dir_tmp }}"
     state: directory
 
-- name: Copy file openjdk{{ openjdk_major_Version }} from source server to target server (Temporaire will be replaced by Nexus)
+- name: Copy openjdk{{ openjdk_major_Version }} file from source server to target server (Temporaire will be replaced by Nexus)
   win_copy:
     src: "{{ item }}"
     dest: "{{ openjdk_dir_tmp }}"
@@ -14,7 +14,7 @@
 
 - name: Check if openjdk{{ openjdk_major_Version }} file exists
   win_stat:
-      path: "{{ openjdk_dir_tmp }}\\{{ check_copy_openjdk_file.results[0].original_basename }}"
+    path: "{{ openjdk_dir_tmp }}\\{{ check_copy_openjdk_file.results[0].original_basename }}"
   register: check_openjdk_file
   when: check_copy_openjdk_file.changed == False
 
@@ -27,16 +27,18 @@
 
     - name: Rename openjdk file
       win_shell: |
-        $fileName= (Get-ChildItem -Path "{{ openjdk_app_dir }}").Name
-        if($fileName -match '^(java-)(.+[a-z]-)(.*[1-9].+)$'){
-          $newFileName= $fileName -replace '^(java-)(.+[a-z]-)(.*[1-9])(-\d\..*)$','$1$3'
-          Rename-Item "{{ openjdk_app_dir }}$fileName" $newFileName
-          write-host $newFileName
-        } 
+        $files= (Get-ChildItem -Path "{{ openjdk_app_dir }}").Name
+        foreach( $file in $files){
+          if($file -match '^(java-)(.+[a-z]-)(.*[1-9].+)$'){
+            $newFileName= $file -replace '^(java-)(.+[a-z]-)(.*[1-9])(-\d\..*)$','$1$3'
+            Rename-Item "{{ openjdk_app_dir }}$file" $newFileName
+            write-host $newFileName
+          }
+        }
       register: rename_result_out
-      changed_when: rename_result_out.stdout | length != 0
+      failed_when: rename_result_out.stderr | length != 0
     
-    - name: Create Environment variable JAVA_HOME for openjdk{{openjdk_major_Version}}
+    - name: Create the Environment variable JAVA_HOME for openjdk{{openjdk_major_Version}}
       win_path:
         elements: "{{ openjdk_app_dir }}{{rename_result_out.stdout_lines[0]}}"
         scope: machine
@@ -51,5 +53,20 @@
         scope: machine
         state: present
       when: rename_result_out.changed
-      
+    - name: Configure TrustKeyStore for SonarQube      
+      block:
+        - name: Check if the TrustKeystore folder exists
+          win_stat:
+            path : "{{ TrustKeystore_file }}"
+          register: folder_info
+          failed_when: folder_info.stat.exists == false
+        
+        - name: Create the Environment variable 'SONAR_SCANNER_OPTS'
+          win_path:
+            elements: "{{ sonar_scanner_opts }}"
+            scope: machine
+            state: present
+            name: SONAR_SCANNER_OPTS
+      when: sonar_scanner_opts is defined
+
   when: check_copy_openjdk_file.changed == True or check_openjdk_file.stat.exists == True

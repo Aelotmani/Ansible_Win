@@ -13,11 +13,11 @@
   register: check_copy_sonarscanner_file
 
 - debug: 
-    msg: "{{ check_copy_sonarscanner_file.results[0].original_basename }}"
+  msg: "{{ check_copy_sonarscanner_file.results[0].original_basename }}"
 
 - name: Check if SonarScanner{{ sonarscanner_version }} file exists
   win_stat:
-      path: "{{ sonarscanner_dir_tmp }}\\{{ check_copy_sonarscanner_file.results[0].original_basename }}"
+    path: "{{ sonarscanner_dir_tmp }}\\{{ check_copy_sonarscanner_file.results[0].original_basename }}"
   register: check_SonarScanner_file
   when: not check_copy_sonarscanner_file.changed
 
@@ -35,11 +35,11 @@
 
     - name: Edit "SonarQube.Analysis.xml" file
       win_lineinfile:
-          path: "{{sonarscanner_app_dir}}\\SonarQube.Analysis.xml"
-          backrefs: yes
-          backup: yes
-          regexp: '^(.*)(<.*\"{{ item.property}}\">).*(</Property>)$'
-          line: '$1$2{{ item.value }}$3'
+        path: "{{sonarscanner_app_dir}}\\SonarQube.Analysis.xml"
+        backrefs: yes
+        backup: yes
+        regexp: '^(.*)(<.*\"{{ item.property}}\">).*(</Property>)$'
+        line: '$1$2{{ item.value }}$3'
       with_items:
         - { property: sonar.host.url, value: '{{ sonar_host_url }}' }
         - { property: sonar.login, value: '{{ sonar_login }}' }
